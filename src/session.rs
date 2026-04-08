@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -250,21 +251,29 @@ pub fn discover_sessions(claude_dir: &Path) -> Result<Vec<SessionIndex>> {
         let project_path = decode_project_path(&dir_name);
         let project_display = project_display_name(&project_path);
 
+        let mut seen_ids: HashSet<String> = HashSet::new();
+
         // Try sessions-index.json fast path
         let index_path = path.join("sessions-index.json");
         if index_path.exists()
             && let Ok(index_sessions) =
                 load_sessions_from_index(&index_path, &project_path, &project_display)
         {
+            for s in &index_sessions {
+                seen_ids.insert(s.session_id.clone());
+            }
             sessions.extend(index_sessions);
-            continue;
         }
 
-        // Fallback: scan JSONL files
-        if let Ok(fallback_sessions) =
+        // Always scan JSONL files to catch sessions not in the index
+        if let Ok(scanned_sessions) =
             load_sessions_from_jsonl_scan(&path, &project_path, &project_display)
         {
-            sessions.extend(fallback_sessions);
+            for s in scanned_sessions {
+                if !seen_ids.contains(&s.session_id) {
+                    sessions.push(s);
+                }
+            }
         }
     }
 
@@ -319,10 +328,6 @@ fn load_sessions_from_index(
 
         let first_prompt = entry.first_prompt.unwrap_or_default();
         if !has_meaningful_prompt(&first_prompt) {
-            continue;
-        }
-
-        if !file_path.exists() {
             continue;
         }
 
@@ -969,61 +974,9 @@ mod tests {
         )
         .unwrap();
 
-        // Create JSONL files so they pass file existence check
-        fs::write(project_dir.join("real-session.jsonl"), "").unwrap();
-        fs::write(project_dir.join("no-prompt-session.jsonl"), "").unwrap();
-        fs::write(project_dir.join("stderr-session.jsonl"), "").unwrap();
-
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].session_id, "real-session");
-    }
-
-    #[test]
-    fn test_discover_sessions_excludes_missing_jsonl_from_index() {
-        let dir = TempDir::new().unwrap();
-        let claude_dir = dir.path();
-        let project_dir = claude_dir
-            .join("projects")
-            .join("-Users-foo-Documents-proj3");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        let index = serde_json::json!({
-            "version": "1",
-            "entries": [
-                {
-                    "sessionId": "existing-session",
-                    "fullPath": project_dir.join("existing-session.jsonl").to_str().unwrap(),
-                    "firstPrompt": "Hello",
-                    "messageCount": 4,
-                    "created": "2026-04-08T10:00:00Z",
-                    "modified": "2026-04-08T12:00:00Z",
-                    "isSidechain": false
-                },
-                {
-                    "sessionId": "deleted-session",
-                    "fullPath": project_dir.join("deleted-session.jsonl").to_str().unwrap(),
-                    "firstPrompt": "Was here",
-                    "messageCount": 6,
-                    "created": "2026-04-08T10:00:00Z",
-                    "modified": "2026-04-08T11:00:00Z",
-                    "isSidechain": false
-                }
-            ]
-        });
-
-        fs::write(
-            project_dir.join("sessions-index.json"),
-            serde_json::to_string(&index).unwrap(),
-        )
-        .unwrap();
-
-        // Only create the first file — second is "deleted"
-        fs::write(project_dir.join("existing-session.jsonl"), "").unwrap();
-
-        let sessions = discover_sessions(claude_dir).unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].session_id, "existing-session");
     }
 
     #[test]
@@ -1099,5 +1052,97 @@ mod tests {
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].session_id, "main-sess");
+    }
+
+    #[test]
+    fn test_discover_sessions_merges_index_and_jsonl_scan() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-merge");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Index contains only one session
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "indexed-sess",
+                    "fullPath": project_dir.join("indexed-sess.jsonl").to_str().unwrap(),
+                    "firstPrompt": "From index",
+                    "messageCount": 4,
+                    "created": "2026-02-01T10:00:00Z",
+                    "modified": "2026-02-01T12:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        // Create indexed JSONL file
+        fs::write(project_dir.join("indexed-sess.jsonl"), "").unwrap();
+
+        // Create a NEW JSONL file not in the index (added after index was last updated)
+        let new_jsonl = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"New session"},"timestamp":"2026-04-01T09:00:00Z","gitBranch":"main"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Hello!"}]},"timestamp":"2026-04-01T09:01:00Z"}"#;
+        fs::write(project_dir.join("new-sess.jsonl"), new_jsonl).unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 2);
+
+        let ids: Vec<&str> = sessions.iter().map(|s| s.session_id.as_str()).collect();
+        assert!(ids.contains(&"indexed-sess"));
+        assert!(ids.contains(&"new-sess"));
+    }
+
+    #[test]
+    fn test_discover_sessions_index_takes_priority_over_jsonl() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-dedup");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Index has a session with specific metadata
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "same-sess",
+                    "fullPath": project_dir.join("same-sess.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Index version",
+                    "summary": "From the index",
+                    "messageCount": 10,
+                    "created": "2026-02-01T10:00:00Z",
+                    "modified": "2026-02-01T12:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        // JSONL file also exists (same session ID) with different first_prompt
+        let jsonl = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"JSONL version"},"timestamp":"2026-02-01T10:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Hi"}]},"timestamp":"2026-02-01T10:01:00Z"}"#;
+        fs::write(project_dir.join("same-sess.jsonl"), jsonl).unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        // Should have exactly 1 session (no duplicate)
+        assert_eq!(sessions.len(), 1);
+        // Index version should take priority
+        assert_eq!(sessions[0].first_prompt, "Index version");
+        assert_eq!(sessions[0].message_count, 10);
     }
 }
