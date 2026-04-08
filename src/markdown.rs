@@ -255,11 +255,20 @@ impl<'a> MarkdownRenderer<'a> {
         }
 
         if self.in_code_block {
+            let code_style = self.theme.markdown.code_block;
             for line in text.lines() {
-                self.lines.push(Line::from(Span::styled(
-                    format!(" {line} "),
-                    self.theme.markdown.code_block,
-                )));
+                let content = format!("  {line}  ");
+                let content_width = content.width();
+                let padded = if content_width < self.available_width {
+                    format!(
+                        "{content}{}",
+                        " ".repeat(self.available_width - content_width)
+                    )
+                } else {
+                    content
+                };
+                self.lines
+                    .push(Line::from(Span::styled(padded, code_style)));
             }
             return;
         }
@@ -616,7 +625,7 @@ mod tests {
         let t = theme();
         let result = render_md("use `code` here", base_style(), &t);
         let span = find_span_with_text(&result, "code").expect("inline code span not found");
-        assert_eq!(span.style.bg, Some(Color::DarkGray));
+        assert_eq!(span.style.bg, Some(Color::Indexed(236)));
         assert_eq!(span.style.fg, Some(Color::Yellow));
     }
 
@@ -652,7 +661,7 @@ mod tests {
         let t = theme();
         let result = render_md("```\nlet x = 1;\n```", base_style(), &t);
         let span = find_span_with_text(&result, "let x = 1;").expect("code block span not found");
-        assert_eq!(span.style.bg, Some(Color::DarkGray));
+        assert_eq!(span.style.bg, Some(Color::Indexed(236)));
     }
 
     #[test]
@@ -663,7 +672,7 @@ mod tests {
         assert!(lang_span.style.add_modifier.contains(Modifier::ITALIC));
         let code_span =
             find_span_with_text(&result, "fn main()").expect("code block span not found");
-        assert_eq!(code_span.style.bg, Some(Color::DarkGray));
+        assert_eq!(code_span.style.bg, Some(Color::Indexed(236)));
     }
 
     #[test]
@@ -735,7 +744,7 @@ mod tests {
         let italic_span = find_span_with_text(&result, "italic").expect("italic span");
         assert!(italic_span.style.add_modifier.contains(Modifier::ITALIC));
         let code_span = find_span_with_text(&result, "code").expect("code span");
-        assert_eq!(code_span.style.bg, Some(Color::DarkGray));
+        assert_eq!(code_span.style.bg, Some(Color::Indexed(236)));
     }
 
     #[test]
@@ -831,6 +840,34 @@ mod tests {
         assert_eq!(truncate_to_width("abc", 3), "abc");
         assert_eq!(truncate_to_width("abcdef", 3), "...");
         assert_eq!(truncate_to_width("テスト長い文字列", 10), "テスト...");
+    }
+
+    #[test]
+    fn test_code_block_lines_padded_to_full_width() {
+        let t = theme();
+        let result = render_markdown("```\nlet x = 1;\n```", base_style(), &t, 40);
+        // Find the code block line
+        let code_line = result
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains("let x = 1;")))
+            .expect("code block line not found");
+        // The line should have total display width of 40 (full available width)
+        let total_width: usize = code_line.spans.iter().map(|s| s.content.width()).sum();
+        assert_eq!(
+            total_width, 40,
+            "Code block line should be padded to full width, got {total_width}"
+        );
+    }
+
+    #[test]
+    fn test_code_block_uses_indexed_colors() {
+        let t = theme();
+        let result = render_markdown("```\ncode\n```", base_style(), &t, 80);
+        let code_span = find_span_with_text(&result, "code").expect("code span not found");
+        // Should use Indexed(236) background for better contrast
+        assert_eq!(code_span.style.bg, Some(Color::Indexed(236)));
+        // Should use Indexed(252) foreground for better readability
+        assert_eq!(code_span.style.fg, Some(Color::Indexed(252)));
     }
 
     #[test]
