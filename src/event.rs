@@ -6,6 +6,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Handle a key event based on the current app mode.
 pub fn handle_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        app.should_quit = true;
+        return Ok(());
+    }
     match app.mode {
         AppMode::Normal => handle_normal_key(app, key)?,
         AppMode::Viewing => handle_viewing_key(app, key)?,
@@ -539,5 +543,44 @@ mod tests {
         handle_key(&mut app, make_key(KeyCode::Char('R'))).unwrap();
         assert!(!app.should_quit);
         assert!(app.resume_session_id.is_none());
+    }
+
+    #[test]
+    fn test_ctrl_c_quits_in_normal() {
+        let mut app = AppState::new(make_sessions(3));
+        handle_key(&mut app, make_key_ctrl('c')).unwrap();
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_c_quits_in_viewing() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        handle_key(&mut app, make_key_ctrl('c')).unwrap();
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_c_quits_in_search() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::FuzzySearch;
+        handle_key(&mut app, make_key_ctrl('c')).unwrap();
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_c_quits_in_date_filter() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::DateFilter;
+        handle_key(&mut app, make_key_ctrl('c')).unwrap();
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_c_quits_in_help() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Help;
+        handle_key(&mut app, make_key_ctrl('c')).unwrap();
+        assert!(app.should_quit);
     }
 }
