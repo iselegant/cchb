@@ -534,10 +534,11 @@ mod tests {
     #[test]
     fn test_increment_date_field_to() {
         let mut app = AppState::new(make_sessions(3));
-        app.date_to_input = "2026-04-08".to_string();
+        // Use a date far enough in the past so the today-clamp never blocks increment
+        app.date_to_input = "2020-01-01".to_string();
         app.date_field = DateField::To;
         app.increment_date_field();
-        assert_eq!(app.date_to_input, "2026-04-09");
+        assert_eq!(app.date_to_input, "2020-01-02");
     }
 
     #[test]
