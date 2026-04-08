@@ -62,6 +62,9 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.toggle_help();
         }
         (KeyCode::Char('r'), _) => {
+            app.request_resume();
+        }
+        (KeyCode::Char('R'), _) => {
             // Reload is handled by main loop since it needs claude_dir path
         }
         (KeyCode::Tab, _) => {
@@ -416,5 +419,29 @@ mod tests {
         app.mode = AppMode::Viewing;
         handle_key(&mut app, make_key(KeyCode::Esc)).unwrap();
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_r_requests_resume() {
+        let mut app = AppState::new(make_sessions(3));
+        handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-0"));
+    }
+
+    #[test]
+    fn test_r_resume_empty_sessions() {
+        let mut app = AppState::new(vec![]);
+        handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
+        assert!(!app.should_quit);
+        assert!(app.resume_session_id.is_none());
+    }
+
+    #[test]
+    fn test_shift_r_does_not_resume() {
+        let mut app = AppState::new(make_sessions(3));
+        handle_key(&mut app, make_key(KeyCode::Char('R'))).unwrap();
+        assert!(!app.should_quit);
+        assert!(app.resume_session_id.is_none());
     }
 }

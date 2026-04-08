@@ -177,8 +177,15 @@ Each JSONL file consists of one message per line:
 | `Tab` | Normal/Viewing | Toggle focus between left/right panels |
 | `/` | Viewing | In-conversation text search |
 | `c` | Normal | Clear all filters |
-| `r` | Normal | Reload session list |
+| `R` (Shift+r) | Normal | Reload session list |
 | `[` / `]` | Viewing | Navigate to previous/next session without returning to list |
+
+### FR-8: Session Restore (r key)
+
+- Press `r` in Normal mode to restore the currently selected session
+- Exits cchist TUI, then launches `claude --resume <session-id>` via `exec`
+- Terminal is properly restored before launching Claude
+- If no session is selected, the key press is ignored
 
 ## Non-Functional Requirements
 

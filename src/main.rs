@@ -90,9 +90,9 @@ fn run_app(
                     continue;
                 }
 
-                // Handle reload (r key in normal mode)
+                // Handle reload (R key in normal mode)
                 if app.mode == app::AppMode::Normal
-                    && key.code == crossterm::event::KeyCode::Char('r')
+                    && key.code == crossterm::event::KeyCode::Char('R')
                 {
                     if let Ok(sessions) = session::discover_sessions(claude_dir) {
                         let indices: Vec<usize> = (0..sessions.len()).collect();
@@ -143,5 +143,28 @@ fn main() -> Result<()> {
     let result = run_app(&mut terminal, &mut app, &theme, &claude_dir);
 
     restore_terminal();
-    result
+    result?;
+
+    // If user requested session resume, launch claude --resume from the project directory
+    if let Some(session_id) = &app.resume_session_id {
+        let mut cmd = std::process::Command::new("claude");
+        cmd.args(["--resume", session_id]);
+
+        if let Some(ref project_path) = app.resume_project_path {
+            let path = std::path::Path::new(project_path);
+            if path.is_dir() {
+                cmd.current_dir(path);
+            }
+        }
+
+        let status = cmd
+            .status()
+            .context("Failed to launch claude. Is it installed and in your PATH?")?;
+
+        if !status.success() {
+            anyhow::bail!("claude exited with status: {status}");
+        }
+    }
+
+    Ok(())
 }
