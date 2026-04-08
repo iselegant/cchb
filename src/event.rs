@@ -175,6 +175,12 @@ fn handle_date_filter_key(app: &mut AppState, key: KeyEvent) {
             app.update_filtered_indices(indices);
             app.mode = AppMode::Normal;
         }
+        KeyCode::Up => {
+            app.increment_date_field();
+        }
+        KeyCode::Down => {
+            app.decrement_date_field();
+        }
         KeyCode::Backspace => {
             let input = match app.date_field {
                 DateField::From => &mut app.date_from_input,
@@ -401,6 +407,26 @@ mod tests {
         assert_eq!(app.date_field, DateField::From);
         handle_key(&mut app, make_key(KeyCode::Tab)).unwrap();
         assert_eq!(app.date_field, DateField::To);
+    }
+
+    #[test]
+    fn test_date_filter_up_increments_date() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::DateFilter;
+        app.date_field = DateField::From;
+        app.date_from_input = "2026-04-05".to_string();
+        handle_key(&mut app, make_key(KeyCode::Up)).unwrap();
+        assert_eq!(app.date_from_input, "2026-04-06");
+    }
+
+    #[test]
+    fn test_date_filter_down_decrements_date() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::DateFilter;
+        app.date_field = DateField::To;
+        app.date_to_input = "2026-04-08".to_string();
+        handle_key(&mut app, make_key(KeyCode::Down)).unwrap();
+        assert_eq!(app.date_to_input, "2026-04-07");
     }
 
     #[test]

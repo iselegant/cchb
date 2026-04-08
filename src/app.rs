@@ -1,4 +1,6 @@
+use crate::filter;
 use crate::session::{ConversationMessage, SessionIndex};
+use chrono::{Days, Local};
 use ratatui::widgets::ListState;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -194,10 +196,62 @@ impl AppState {
     }
 
     pub fn enter_date_filter(&mut self) {
-        self.date_from_input.clear();
-        self.date_to_input.clear();
+        let today = Local::now().date_naive();
+        let week_ago = today.checked_sub_days(Days::new(7)).unwrap_or(today);
+        self.date_from_input = week_ago.format("%Y-%m-%d").to_string();
+        self.date_to_input = today.format("%Y-%m-%d").to_string();
         self.date_field = DateField::From;
         self.mode = AppMode::DateFilter;
+    }
+
+    /// Increment the active date field by 1 day.
+    /// When incrementing From, it cannot exceed To.
+    pub fn increment_date_field(&mut self) {
+        match self.date_field {
+            DateField::From => {
+                if let Some(date) = filter::parse_date_input(&self.date_from_input)
+                    && let Some(next) = date.checked_add_days(Days::new(1))
+                {
+                    let to = filter::parse_date_input(&self.date_to_input);
+                    if to.is_none() || next <= to.unwrap() {
+                        self.date_from_input = next.format("%Y-%m-%d").to_string();
+                    }
+                }
+            }
+            DateField::To => {
+                let today = Local::now().date_naive();
+                if let Some(date) = filter::parse_date_input(&self.date_to_input)
+                    && let Some(next) = date.checked_add_days(Days::new(1))
+                    && next <= today
+                {
+                    self.date_to_input = next.format("%Y-%m-%d").to_string();
+                }
+            }
+        }
+    }
+
+    /// Decrement the active date field by 1 day.
+    /// When decrementing To, it cannot go below From.
+    pub fn decrement_date_field(&mut self) {
+        match self.date_field {
+            DateField::From => {
+                if let Some(date) = filter::parse_date_input(&self.date_from_input)
+                    && let Some(prev) = date.checked_sub_days(Days::new(1))
+                {
+                    self.date_from_input = prev.format("%Y-%m-%d").to_string();
+                }
+            }
+            DateField::To => {
+                if let Some(date) = filter::parse_date_input(&self.date_to_input)
+                    && let Some(prev) = date.checked_sub_days(Days::new(1))
+                {
+                    let from = filter::parse_date_input(&self.date_from_input);
+                    if from.is_none() || prev >= from.unwrap() {
+                        self.date_to_input = prev.format("%Y-%m-%d").to_string();
+                    }
+                }
+            }
+        }
     }
 
     pub fn cancel_date_filter(&mut self) {
@@ -452,6 +506,142 @@ mod tests {
         app.enter_date_filter();
         assert_eq!(app.mode, AppMode::DateFilter);
         assert_eq!(app.date_field, DateField::From);
+        // Verify preset values: from = today - 7 days, to = today
+        let today = Local::now().date_naive();
+        let week_ago = today.checked_sub_days(Days::new(7)).unwrap();
+        assert_eq!(app.date_from_input, week_ago.format("%Y-%m-%d").to_string());
+        assert_eq!(app.date_to_input, today.format("%Y-%m-%d").to_string());
+    }
+
+    #[test]
+    fn test_increment_date_field_from() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_field = DateField::From;
+        app.increment_date_field();
+        assert_eq!(app.date_from_input, "2026-04-06");
+    }
+
+    #[test]
+    fn test_decrement_date_field_from() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_field = DateField::From;
+        app.decrement_date_field();
+        assert_eq!(app.date_from_input, "2026-04-04");
+    }
+
+    #[test]
+    fn test_increment_date_field_to() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::To;
+        app.increment_date_field();
+        assert_eq!(app.date_to_input, "2026-04-09");
+    }
+
+    #[test]
+    fn test_decrement_date_field_to() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::To;
+        app.decrement_date_field();
+        assert_eq!(app.date_to_input, "2026-04-07");
+    }
+
+    #[test]
+    fn test_increment_invalid_date_no_change() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "invalid".to_string();
+        app.date_field = DateField::From;
+        app.increment_date_field();
+        assert_eq!(app.date_from_input, "invalid");
+    }
+
+    #[test]
+    fn test_decrement_month_boundary() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-05-01".to_string();
+        app.date_field = DateField::From;
+        app.decrement_date_field();
+        assert_eq!(app.date_from_input, "2026-04-30");
+    }
+
+    #[test]
+    fn test_increment_from_clamped_by_to() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-08".to_string();
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::From;
+        app.increment_date_field();
+        // From should not exceed To
+        assert_eq!(app.date_from_input, "2026-04-08");
+    }
+
+    #[test]
+    fn test_decrement_to_clamped_by_from() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_to_input = "2026-04-05".to_string();
+        app.date_field = DateField::To;
+        app.decrement_date_field();
+        // To should not go below From
+        assert_eq!(app.date_to_input, "2026-04-05");
+    }
+
+    #[test]
+    fn test_increment_from_allowed_when_below_to() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::From;
+        app.increment_date_field();
+        assert_eq!(app.date_from_input, "2026-04-06");
+    }
+
+    #[test]
+    fn test_decrement_to_allowed_when_above_from() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::To;
+        app.decrement_date_field();
+        assert_eq!(app.date_to_input, "2026-04-07");
+    }
+
+    #[test]
+    fn test_to_increment_clamped_by_today() {
+        let mut app = AppState::new(make_sessions(3));
+        let today = Local::now().date_naive();
+        app.date_from_input = "2020-01-01".to_string();
+        app.date_to_input = today.format("%Y-%m-%d").to_string();
+        app.date_field = DateField::To;
+        app.increment_date_field();
+        // To should not exceed today
+        assert_eq!(app.date_to_input, today.format("%Y-%m-%d").to_string());
+    }
+
+    #[test]
+    fn test_to_increment_allowed_when_below_today() {
+        let mut app = AppState::new(make_sessions(3));
+        let today = Local::now().date_naive();
+        let yesterday = today.checked_sub_days(Days::new(1)).unwrap();
+        app.date_from_input = "2020-01-01".to_string();
+        app.date_to_input = yesterday.format("%Y-%m-%d").to_string();
+        app.date_field = DateField::To;
+        app.increment_date_field();
+        assert_eq!(app.date_to_input, today.format("%Y-%m-%d").to_string());
+    }
+
+    #[test]
+    fn test_from_decrement_unconstrained() {
+        let mut app = AppState::new(make_sessions(3));
+        app.date_from_input = "2026-04-05".to_string();
+        app.date_to_input = "2026-04-08".to_string();
+        app.date_field = DateField::From;
+        app.decrement_date_field();
+        // From can always decrement freely
+        assert_eq!(app.date_from_input, "2026-04-04");
     }
 
     #[test]

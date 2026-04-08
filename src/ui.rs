@@ -231,7 +231,7 @@ fn render_search_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) {
 }
 
 fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) {
-    let area = centered_rect(40, 6, frame.area());
+    let area = centered_rect(50, 7, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -263,9 +263,10 @@ fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) 
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            " Enter: apply  Tab: switch  Esc: cancel",
+            " Up/Down: +/- 1 day  Tab: switch field",
             theme.help_desc,
         )),
+        Line::from(Span::styled(" Enter: apply  Esc: cancel", theme.help_desc)),
     ];
 
     let paragraph = Paragraph::new(text).block(block);
