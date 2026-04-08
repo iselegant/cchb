@@ -119,6 +119,17 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 reload_conversation(app);
             }
         }
+        (KeyCode::Char('r'), _) => {
+            app.request_resume();
+        }
+        (KeyCode::Char('f'), _) => {
+            app.exit_viewing();
+            app.enter_search();
+        }
+        (KeyCode::Char('d'), _) => {
+            app.exit_viewing();
+            app.enter_date_filter();
+        }
         (KeyCode::Tab, _) => {
             app.toggle_panel();
         }
@@ -216,6 +227,7 @@ fn reload_conversation(app: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::Panel;
     use crate::session::SessionIndex;
     use chrono::Utc;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -467,6 +479,34 @@ mod tests {
         app.mode = AppMode::Viewing;
         handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
         assert_eq!(app.conversation_scroll, 1);
+    }
+
+    #[test]
+    fn test_viewing_f_enters_search() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        handle_key(&mut app, make_key(KeyCode::Char('f'))).unwrap();
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+        assert_eq!(app.active_panel, Panel::SessionList);
+    }
+
+    #[test]
+    fn test_viewing_d_enters_date_filter() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        handle_key(&mut app, make_key(KeyCode::Char('d'))).unwrap();
+        assert_eq!(app.mode, AppMode::DateFilter);
+        assert_eq!(app.active_panel, Panel::SessionList);
+    }
+
+    #[test]
+    fn test_viewing_r_requests_resume() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.selected_index = 1;
+        handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-1"));
     }
 
     #[test]

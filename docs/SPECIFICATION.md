@@ -168,7 +168,7 @@ Each JSONL file consists of one message per line:
 
 ### FR-4: Fuzzy Search (f key)
 
-- Press `f` to activate search mode
+- Press `f` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
 - fzf-like fuzzy matching
 - Search targets: project name, first message, branch name, summary
 - Real-time filtering of session list as user types
@@ -178,7 +178,7 @@ Each JSONL file consists of one message per line:
 
 ### FR-5: Date Range Filter (d key)
 
-- Press `d` to activate date filter mode
+- Press `d` in Normal or Viewing mode to activate date filter mode (Viewing mode exits first)
 - **Preset values**: `From` defaults to 7 days before today, `To` defaults to today
 - **Up/Down cursor keys**: Increment/decrement the active date field by 1 day
 - Manual text input is also supported (YYYY-MM-DD format)
@@ -203,7 +203,7 @@ Each JSONL file consists of one message per line:
 
 ### FR-8: Session Restore (r key)
 
-- Press `r` in Normal mode to restore the currently selected session
+- Press `r` in Normal or Viewing mode to restore the currently selected session
 - Exits cchist TUI, then launches `claude --resume <session-id>` via `exec`
 - Terminal is properly restored before launching Claude
 - If no session is selected, the key press is ignored
