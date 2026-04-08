@@ -4,7 +4,7 @@ use crate::markdown;
 use crate::session::ContentBlock;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
@@ -179,6 +179,15 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme
         lines.push(Line::from(""));
     }
 
+    let lines = if !app.search_query.is_empty() {
+        lines
+            .into_iter()
+            .map(|line| highlight_line(line, &app.search_query, theme.search_highlight))
+            .collect()
+    } else {
+        lines
+    };
+
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
@@ -197,14 +206,23 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
         format!(" {session_count}/{total} sessions")
     };
 
+    let search_indicator = if !app.search_query.is_empty() {
+        format!("  [search: {}]", app.search_query)
+    } else {
+        String::new()
+    };
+
     let hints = " r:resume  f:search  d:date  h:help  q:quit ";
+
+    let left_len = status_text.len() + search_indicator.len();
+    let fill_len = (area.width as usize)
+        .saturating_sub(left_len)
+        .saturating_sub(hints.len());
 
     let status = Paragraph::new(Line::from(vec![
         Span::styled(status_text, theme.status_bar),
-        Span::styled(
-            " ".repeat(area.width.saturating_sub(30) as usize),
-            theme.status_bar,
-        ),
+        Span::styled(search_indicator, theme.search_input.bg(Color::DarkGray)),
+        Span::styled(" ".repeat(fill_len), theme.status_bar),
         Span::styled(hints, theme.status_bar),
     ]));
 
@@ -312,6 +330,45 @@ fn help_line<'a>(key: &'a str, desc: &'a str, theme: &Theme) -> Line<'a> {
     ])
 }
 
+/// Highlight all case-insensitive occurrences of `query` within a line's spans.
+/// Matching portions are rendered with `highlight_style`.
+fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Line<'a> {
+    if query.is_empty() {
+        return line;
+    }
+    let query_lower = query.to_lowercase();
+    let mut result_spans: Vec<Span<'a>> = Vec::new();
+
+    for span in line.spans {
+        let text = span.content.to_string();
+        let text_lower = text.to_lowercase();
+        let style = span.style;
+
+        let mut pos = 0;
+        let mut has_match = false;
+
+        for (start, _) in text_lower.match_indices(&query_lower) {
+            has_match = true;
+            if start > pos {
+                result_spans.push(Span::styled(text[pos..start].to_string(), style));
+            }
+            let end = start + query.len();
+            result_spans.push(Span::styled(text[start..end].to_string(), highlight_style));
+            pos = end;
+        }
+
+        if has_match {
+            if pos < text.len() {
+                result_spans.push(Span::styled(text[pos..].to_string(), style));
+            }
+        } else {
+            result_spans.push(Span::styled(text, style));
+        }
+    }
+
+    Line::from(result_spans)
+}
+
 fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     let vertical = Layout::vertical([
         Constraint::Length((area.height.saturating_sub(height)) / 2),
@@ -328,4 +385,102 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     .split(vertical[1]);
 
     horizontal[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hl_style() -> Style {
+        Style::default().fg(Color::Black).bg(Color::Yellow)
+    }
+
+    #[test]
+    fn test_highlight_line_no_match() {
+        let line = Line::from("hello world");
+        let result = highlight_line(line, "xyz", hl_style());
+        assert_eq!(result.spans.len(), 1);
+        assert_eq!(result.spans[0].content.as_ref(), "hello world");
+    }
+
+    #[test]
+    fn test_highlight_line_empty_query() {
+        let line = Line::from("hello world");
+        let result = highlight_line(line, "", hl_style());
+        assert_eq!(result.spans.len(), 1);
+        assert_eq!(result.spans[0].content.as_ref(), "hello world");
+    }
+
+    #[test]
+    fn test_highlight_line_single_match() {
+        let line = Line::from("hello world");
+        let result = highlight_line(line, "world", hl_style());
+        assert_eq!(result.spans.len(), 2);
+        assert_eq!(result.spans[0].content.as_ref(), "hello ");
+        assert_eq!(result.spans[1].content.as_ref(), "world");
+        assert_eq!(result.spans[1].style, hl_style());
+    }
+
+    #[test]
+    fn test_highlight_line_case_insensitive() {
+        let line = Line::from("Hello World");
+        let result = highlight_line(line, "hello", hl_style());
+        assert_eq!(result.spans.len(), 2);
+        assert_eq!(result.spans[0].content.as_ref(), "Hello");
+        assert_eq!(result.spans[0].style, hl_style());
+        assert_eq!(result.spans[1].content.as_ref(), " World");
+    }
+
+    #[test]
+    fn test_highlight_line_multiple_matches() {
+        let line = Line::from("foo bar foo baz foo");
+        let result = highlight_line(line, "foo", hl_style());
+        assert_eq!(result.spans.len(), 5);
+        assert_eq!(result.spans[0].content.as_ref(), "foo");
+        assert_eq!(result.spans[0].style, hl_style());
+        assert_eq!(result.spans[1].content.as_ref(), " bar ");
+        assert_eq!(result.spans[2].content.as_ref(), "foo");
+        assert_eq!(result.spans[2].style, hl_style());
+        assert_eq!(result.spans[3].content.as_ref(), " baz ");
+        assert_eq!(result.spans[4].content.as_ref(), "foo");
+        assert_eq!(result.spans[4].style, hl_style());
+    }
+
+    #[test]
+    fn test_highlight_line_across_styled_spans() {
+        let base = Style::default().fg(Color::Green);
+        let line = Line::from(vec![
+            Span::styled("hello ", base),
+            Span::styled("world test", base),
+        ]);
+        let result = highlight_line(line, "world", hl_style());
+        // "hello " (no match) + "world" (highlight) + " test" (base)
+        assert_eq!(result.spans.len(), 3);
+        assert_eq!(result.spans[0].content.as_ref(), "hello ");
+        assert_eq!(result.spans[0].style, base);
+        assert_eq!(result.spans[1].content.as_ref(), "world");
+        assert_eq!(result.spans[1].style, hl_style());
+        assert_eq!(result.spans[2].content.as_ref(), " test");
+        assert_eq!(result.spans[2].style, base);
+    }
+
+    #[test]
+    fn test_highlight_line_match_at_start() {
+        let line = Line::from("terraform plan");
+        let result = highlight_line(line, "terraform", hl_style());
+        assert_eq!(result.spans.len(), 2);
+        assert_eq!(result.spans[0].content.as_ref(), "terraform");
+        assert_eq!(result.spans[0].style, hl_style());
+        assert_eq!(result.spans[1].content.as_ref(), " plan");
+    }
+
+    #[test]
+    fn test_highlight_line_match_at_end() {
+        let line = Line::from("run terraform");
+        let result = highlight_line(line, "terraform", hl_style());
+        assert_eq!(result.spans.len(), 2);
+        assert_eq!(result.spans[0].content.as_ref(), "run ");
+        assert_eq!(result.spans[1].content.as_ref(), "terraform");
+        assert_eq!(result.spans[1].style, hl_style());
+    }
 }
