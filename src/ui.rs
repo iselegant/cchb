@@ -160,6 +160,7 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
             Span::styled(label, label_style),
         ]));
         // Content lines with border prefix: "│   content"
+        let content_start = lines.len();
         for block_content in &msg.content_blocks {
             if let ContentBlock::Text(text) = block_content {
                 let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
@@ -173,10 +174,18 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
                 }
             }
         }
+        // Remove trailing empty content lines (border prefix + whitespace only)
+        while lines.len() > content_start {
+            let last = &lines[lines.len() - 1];
+            let text: String = last.spans.iter().map(|s| s.content.as_ref()).collect();
+            if text.trim().is_empty() || text.trim() == "│" {
+                lines.pop();
+            } else {
+                break;
+            }
+        }
         // End of message: "└─"
         lines.push(Line::from(Span::styled("└─", border_style)));
-        // Blank separator line
-        lines.push(Line::from(""));
     }
 
     let lines = if !app.search_query.is_empty() {
