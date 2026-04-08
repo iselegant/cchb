@@ -38,6 +38,10 @@ pub struct AppState {
     pub should_quit: bool,
     /// Tracks which session_id is currently loaded in the conversation pane
     pub loaded_session_id: Option<String>,
+    /// Set when user requests session resume; main loop will launch claude --resume
+    pub resume_session_id: Option<String>,
+    /// Project path for the session to resume (used as cwd for claude --resume)
+    pub resume_project_path: Option<String>,
 }
 
 impl AppState {
@@ -62,6 +66,8 @@ impl AppState {
             date_field: DateField::From,
             should_quit: false,
             loaded_session_id: None,
+            resume_session_id: None,
+            resume_project_path: None,
         }
     }
 
@@ -239,6 +245,18 @@ impl AppState {
             self.selected_index -= 1;
             self.conversation_scroll = 0;
             self.sync_list_state();
+        }
+    }
+
+    /// Request resuming the currently selected session. Sets the session ID/project path and quits.
+    pub fn request_resume(&mut self) {
+        let info = self
+            .selected_session()
+            .map(|s| (s.session_id.clone(), s.project_path.clone()));
+        if let Some((session_id, project_path)) = info {
+            self.resume_session_id = Some(session_id);
+            self.resume_project_path = Some(project_path);
+            self.should_quit = true;
         }
     }
 }
@@ -519,5 +537,21 @@ mod tests {
         let app = AppState::new(make_sessions(3));
         let session = app.selected_session().unwrap();
         assert_eq!(session.session_id, "sess-0");
+    }
+
+    #[test]
+    fn test_request_resume() {
+        let mut app = AppState::new(make_sessions(3));
+        app.request_resume();
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-0"));
+    }
+
+    #[test]
+    fn test_request_resume_empty() {
+        let mut app = AppState::new(vec![]);
+        app.request_resume();
+        assert!(!app.should_quit);
+        assert!(app.resume_session_id.is_none());
     }
 }

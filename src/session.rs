@@ -315,7 +315,7 @@ fn load_sessions_from_index(
 fn load_sessions_from_jsonl_scan(
     project_dir: &Path,
     project_path: &str,
-    project_display: &str,
+    _project_display: &str,
 ) -> Result<Vec<SessionIndex>> {
     let mut sessions = Vec::new();
 
@@ -343,6 +343,7 @@ fn load_sessions_from_jsonl_scan(
         let mut first_timestamp: Option<DateTime<Utc>> = None;
         let mut last_timestamp: Option<DateTime<Utc>> = None;
         let mut git_branch: Option<String> = None;
+        let mut cwd: Option<String> = None;
         let mut message_count = 0usize;
 
         for line in content.lines().take(50) {
@@ -389,16 +390,24 @@ fn load_sessions_from_jsonl_scan(
                         git_branch = Some(branch.to_string());
                     }
                 }
+
+                if cwd.is_none() {
+                    if let Some(c) = raw.get("cwd").and_then(|v| v.as_str()) {
+                        cwd = Some(c.to_string());
+                    }
+                }
             }
         }
 
         let created = first_timestamp.unwrap_or_else(Utc::now);
         let modified = last_timestamp.unwrap_or(created);
 
+        let effective_project_path = cwd.unwrap_or_else(|| project_path.to_string());
+
         sessions.push(SessionIndex {
             session_id,
-            project_path: project_path.to_string(),
-            project_display: project_display.to_string(),
+            project_display: project_display_name(&effective_project_path),
+            project_path: effective_project_path,
             first_prompt,
             summary: None,
             created,

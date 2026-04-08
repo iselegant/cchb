@@ -175,7 +175,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
         format!(" {session_count}/{total} sessions")
     };
 
-    let hints = " f:search  d:date  h:help  q:quit ";
+    let hints = " r:resume  f:search  d:date  h:help  q:quit ";
 
     let status = Paragraph::new(Line::from(vec![
         Span::styled(status_text, theme.status_bar),

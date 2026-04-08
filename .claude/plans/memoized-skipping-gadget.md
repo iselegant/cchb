@@ -60,7 +60,8 @@ anyhow = "1"
 | `c` | Normal | フィルタクリア |
 | `h`/`?` | Normal | ヘルプ表示 |
 | `/` | Viewing | 会話内テキスト検索 |
-| `r` | Normal | セッション再読込 |
+| `r` | Normal | 選択中セッションを復元（claude --resume） |
+| `R` | Normal | セッション再読込 |
 | `[`/`]` | Viewing | 前後のセッションに移動 |
 
 ## モジュール構成
@@ -129,6 +130,27 @@ src/
   - GitHub Releases にバイナリ添付
 - GitHub Actions ワークフロー (`.github/workflows/ci.yml`):
   - PR/push で `cargo test`, `cargo clippy`, `cargo fmt --check` 実行
+
+### Phase 11: セッション復元機能 (`r` キー)
+
+#### Context
+`r` キーで選択中のセッションを `claude --resume <session-id>` で復元起動する機能を追加。
+既存の `r`（セッション再読込）は `R` (Shift+r) に移動。
+
+#### 変更ファイル
+1. **`src/app.rs`**: `resume_session_id: Option<String>` フィールド追加。復元要求時にセットし `should_quit = true`
+2. **`src/event.rs`**:
+   - `r` キー → `app.request_resume()` を呼び出し（選択中のsession_idをセット＋quit）
+   - `R` キー → 既存のreload処理（main.rsで処理されるためスキップ）
+3. **`src/main.rs`**:
+   - `run_app` のreloadを `R` (Shift+r) に変更
+   - ループ終了後、`app.resume_session_id` が Some なら `std::process::Command::new("claude").args(["--resume", &id])` で起動
+4. **`src/ui.rs`**: ステータスバーのヒントに `r:resume` を追加
+5. **テスト**: `event.rs` に `test_r_requests_resume`, `test_shift_r_does_not_resume` を追加
+
+#### 検証
+- `r` を押すとTUIが終了し `claude --resume <session-id>` が実行される
+- `R` を押すとセッション一覧が再読込される
 
 ## 検証手順
 
