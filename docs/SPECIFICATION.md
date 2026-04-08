@@ -170,7 +170,7 @@ Each JSONL file consists of one message per line:
 
 - Press `f` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
 - fzf-like fuzzy matching
-- Search targets: project name, first message, branch name, summary
+- Search targets: project name, first message, branch name, summary, and full conversation content (on-demand loading)
 - Real-time filtering of session list as user types
 - `Enter` to confirm, `Esc` to cancel
 - **Active search indicator**: When a search query is active after confirmation, it is displayed in the status bar

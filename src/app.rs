@@ -1,5 +1,5 @@
 use crate::filter;
-use crate::session::{ConversationMessage, SessionIndex};
+use crate::session::{self, ConversationMessage, SessionIndex};
 use chrono::{Days, Local};
 use ratatui::widgets::ListState;
 
@@ -24,6 +24,9 @@ pub enum DateField {
     To,
 }
 
+/// Maximum total size of search content cache (1 GB).
+const SEARCH_CACHE_MAX_BYTES: usize = 1_073_741_824;
+
 pub struct AppState {
     pub mode: AppMode,
     pub active_panel: Panel,
@@ -46,6 +49,9 @@ pub struct AppState {
     pub resume_project_path: Option<String>,
     /// Number of session items visible in the list panel (updated each render cycle)
     pub items_per_page: usize,
+    /// Cached searchable text per session, built on search entry, cleared on exit.
+    /// Each entry corresponds to sessions[i]. Empty string means not cached (e.g. over size limit).
+    pub search_content_cache: Vec<String>,
 }
 
 impl AppState {
@@ -73,6 +79,7 @@ impl AppState {
             resume_session_id: None,
             resume_project_path: None,
             items_per_page: 5,
+            search_content_cache: Vec::new(),
         }
     }
 
@@ -187,12 +194,36 @@ impl AppState {
 
     pub fn enter_search(&mut self) {
         self.search_query.clear();
+        self.build_search_content_cache();
         self.mode = AppMode::FuzzySearch;
     }
 
     pub fn cancel_search(&mut self) {
         self.search_query.clear();
+        self.clear_search_content_cache();
         self.mode = AppMode::Normal;
+    }
+
+    /// Build the search content cache by extracting searchable text from all sessions.
+    /// Respects the 1 GB size cap — sessions beyond the limit get empty strings.
+    fn build_search_content_cache(&mut self) {
+        let mut cache = Vec::with_capacity(self.sessions.len());
+        let mut total_bytes: usize = 0;
+        for session in &self.sessions {
+            if total_bytes >= SEARCH_CACHE_MAX_BYTES {
+                cache.push(String::new());
+                continue;
+            }
+            let text = session::extract_searchable_text(&session.file_path);
+            total_bytes = total_bytes.saturating_add(text.len());
+            cache.push(text);
+        }
+        self.search_content_cache = cache;
+    }
+
+    /// Clear the search content cache to free memory.
+    pub fn clear_search_content_cache(&mut self) {
+        self.search_content_cache = Vec::new();
     }
 
     pub fn enter_date_filter(&mut self) {
