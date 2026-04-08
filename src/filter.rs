@@ -1,45 +1,10 @@
 use crate::session::SessionIndex;
 use chrono::NaiveDate;
 
-/// Build a searchable string from a session's metadata.
-fn session_search_text(session: &SessionIndex) -> String {
-    let mut text = String::new();
-    text.push_str(&session.project_display);
-    text.push(' ');
-    text.push_str(&session.first_prompt);
-    if let Some(ref branch) = session.git_branch {
-        text.push(' ');
-        text.push_str(branch);
-    }
-    if let Some(ref summary) = session.summary {
-        text.push(' ');
-        text.push_str(summary);
-    }
-    text.to_lowercase()
-}
-
-/// Check if all characters of the query appear in order within the target (fuzzy match).
-fn fuzzy_match(target: &str, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-    let mut chars = query.chars();
-    let mut current = chars.next();
-    for c in target.chars() {
-        if let Some(q) = current {
-            if c == q {
-                current = chars.next();
-            }
-        } else {
-            break;
-        }
-    }
-    current.is_none()
-}
-
-/// Filter sessions by fuzzy matching against a query string.
-/// Matches against project name, first prompt, git branch, summary,
-/// and full conversation content from the pre-built cache.
+/// Filter sessions by substring matching against conversation content.
+/// Only matches sessions where the query appears as a contiguous substring
+/// in the displayed conversation text, ensuring the match is always visible
+/// in the conversation view.
 pub fn fuzzy_filter(
     sessions: &[SessionIndex],
     query: &str,
@@ -52,12 +17,7 @@ pub fn fuzzy_filter(
     sessions
         .iter()
         .enumerate()
-        .filter(|(i, session)| {
-            let text = session_search_text(session);
-            if fuzzy_match(&text, &query_lower) {
-                return true;
-            }
-            // Fall back to cached conversation content (substring match, not fuzzy)
+        .filter(|(i, _)| {
             if let Some(cached) = content_cache.get(*i)
                 && !cached.is_empty()
             {
@@ -189,53 +149,30 @@ mod tests {
         ]
     }
 
-    // --- fuzzy_match tests ---
+    // --- fuzzy_filter tests (substring match against content cache) ---
 
-    #[test]
-    fn test_fuzzy_match_exact() {
-        assert!(fuzzy_match("terraform", "terraform"));
+    fn sample_caches() -> Vec<String> {
+        vec![
+            "Run terraform plan for VPC setup".into(),        // s1
+            "Fix login bug in authentication flow".into(),    // s2
+            "Add health check endpoint to API".into(),        // s3
+            "Update VPC configuration with terraform".into(), // s4
+        ]
     }
 
     #[test]
-    fn test_fuzzy_match_subsequence() {
-        assert!(fuzzy_match("terraform infra", "tfi"));
-    }
-
-    #[test]
-    fn test_fuzzy_match_no_match() {
-        assert!(!fuzzy_match("terraform", "xyz"));
-    }
-
-    #[test]
-    fn test_fuzzy_match_empty_query() {
-        assert!(fuzzy_match("anything", ""));
-    }
-
-    #[test]
-    fn test_fuzzy_match_empty_target() {
-        assert!(!fuzzy_match("", "abc"));
-    }
-
-    // --- fuzzy_filter tests ---
-
-    #[test]
-    fn test_fuzzy_filter_by_prompt() {
+    fn test_fuzzy_filter_by_content() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "terraform", &[]);
-        assert_eq!(result, vec![0, 3]); // both terraform-infra sessions
+        let cache = sample_caches();
+        let result = fuzzy_filter(&sessions, "terraform", &cache);
+        assert_eq!(result, vec![0, 3]);
     }
 
     #[test]
-    fn test_fuzzy_filter_by_project() {
+    fn test_fuzzy_filter_by_content_partial() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "web", &[]);
-        assert_eq!(result, vec![1]);
-    }
-
-    #[test]
-    fn test_fuzzy_filter_by_branch() {
-        let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "auth", &[]);
+        let cache = sample_caches();
+        let result = fuzzy_filter(&sessions, "login", &cache);
         assert_eq!(result, vec![1]);
     }
 
@@ -249,14 +186,24 @@ mod tests {
     #[test]
     fn test_fuzzy_filter_case_insensitive() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "TERRAFORM", &[]);
+        let cache = sample_caches();
+        let result = fuzzy_filter(&sessions, "TERRAFORM", &cache);
         assert_eq!(result, vec![0, 3]);
     }
 
     #[test]
     fn test_fuzzy_filter_no_match() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "zzzzz", &[]);
+        let cache = sample_caches();
+        let result = fuzzy_filter(&sessions, "zzzzz", &cache);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_filter_empty_cache_no_match() {
+        let sessions = sample_sessions();
+        // With empty cache, non-empty query should match nothing
+        let result = fuzzy_filter(&sessions, "terraform", &[]);
         assert!(result.is_empty());
     }
 
@@ -299,8 +246,9 @@ mod tests {
     #[test]
     fn test_apply_filters_combined() {
         let sessions = sample_sessions();
+        let cache = sample_caches();
         let from = NaiveDate::from_ymd_opt(2026, 4, 1);
-        let result = apply_filters(&sessions, "terraform", from, None, &[]);
+        let result = apply_filters(&sessions, "terraform", from, None, &cache);
         assert_eq!(result, vec![0]); // only s1 matches both terraform + after April 1
     }
 
@@ -367,11 +315,11 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzzy_filter_skips_content_when_metadata_matches() {
-        // When metadata matches, content search is not needed — empty cache is fine
+    fn test_fuzzy_filter_requires_content_cache() {
+        // Without cache, non-empty query matches nothing (metadata is not searched)
         let sessions = sample_sessions();
         let result = fuzzy_filter(&sessions, "terraform", &[]);
-        assert_eq!(result, vec![0, 3]);
+        assert!(result.is_empty());
     }
 
     #[test]
