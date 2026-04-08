@@ -134,6 +134,20 @@ Each JSONL file consists of one message per line:
 - Extract only important elements (per Display Rules)
 - Visually distinguish user messages from assistant responses
 - Word-wrap long text
+- **Markdown Rendering**: Message text is parsed and rendered with visual styling:
+
+| Markdown Element | Rendering |
+|---|---|
+| `# Heading` (H1/H2/H3) | Bold + color differentiation (Cyan/Blue/Green) |
+| `**bold**` | Bold modifier |
+| `*italic*` | Italic modifier |
+| `` `inline code` `` | Yellow text on dark gray background |
+| Fenced code blocks | White text on dark gray background, with language label |
+| Tables | Box-drawing characters (│, ─, ┌, etc.) with header row in bold |
+| Unordered lists (`-`, `*`) | Bullet character (•) with indentation |
+| Ordered lists (`1.`) | Numbered with indentation |
+| `[text](url)` | Underlined cyan text with URL shown |
+| `---` (horizontal rule) | Line of ─ characters |
 
 ### FR-3: Vim Keybindings
 
@@ -246,6 +260,7 @@ Color scheme designed for readability:
 | Date/time | chrono | 0.4 | Timestamps, date filtering |
 | Directories | directories | 5 | Platform-standard paths |
 | Fuzzy search | nucleo | 0.5 | fzf-like search |
+| Markdown parser | pulldown-cmark | 0.12 | CommonMark parsing for rich text rendering |
 | Error handling | anyhow | 1 | Error chaining |
 
 ## UI Layout
@@ -278,6 +293,7 @@ src/
   session.rs    -- SessionIndex, ConversationMessage, ContentBlock,
                    discover_sessions(), load_conversation(), display_messages()
   ui.rs         -- render(), layout construction, widget rendering, overlays
+  markdown.rs   -- Markdown-to-ratatui rendering (pulldown-cmark event mapping)
   event.rs      -- Event loop, key dispatch by mode
   filter.rs     -- SearchEngine (nucleo), date range filter, combined filter
   color.rs      -- Theme struct, default_theme()

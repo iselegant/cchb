@@ -2,6 +2,7 @@ mod app;
 mod color;
 mod event;
 mod filter;
+mod markdown;
 mod session;
 mod ui;
 

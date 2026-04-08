@@ -1,6 +1,23 @@
 use ratatui::style::{Color, Modifier, Style};
 
 #[allow(dead_code)]
+pub struct MarkdownStyles {
+    pub heading1: Style,
+    pub heading2: Style,
+    pub heading3: Style,
+    pub bold: Style,
+    pub italic: Style,
+    pub inline_code: Style,
+    pub code_block: Style,
+    pub code_lang_label: Style,
+    pub link: Style,
+    pub list_bullet: Style,
+    pub table_border: Style,
+    pub table_header: Style,
+    pub horizontal_rule: Style,
+}
+
+#[allow(dead_code)]
 pub struct Theme {
     pub session_selected: Style,
     pub session_normal: Style,
@@ -20,6 +37,7 @@ pub struct Theme {
     pub border_inactive: Style,
     pub status_bar: Style,
     pub title: Style,
+    pub markdown: MarkdownStyles,
 }
 
 impl Theme {
@@ -55,6 +73,31 @@ impl Theme {
             title: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
+            markdown: MarkdownStyles {
+                heading1: Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+                heading2: Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+                heading3: Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+                bold: Style::default().add_modifier(Modifier::BOLD),
+                italic: Style::default().add_modifier(Modifier::ITALIC),
+                inline_code: Style::default().fg(Color::Yellow).bg(Color::DarkGray),
+                code_block: Style::default().fg(Color::White).bg(Color::DarkGray),
+                code_lang_label: Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+                link: Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::UNDERLINED),
+                list_bullet: Style::default().fg(Color::Yellow),
+                table_border: Style::default().fg(Color::DarkGray),
+                table_header: Style::default().add_modifier(Modifier::BOLD),
+                horizontal_rule: Style::default().fg(Color::DarkGray),
+            },
         }
     }
 }

@@ -1,5 +1,6 @@
 use crate::app::{AppMode, AppState, DateField, Panel};
 use crate::color::Theme;
+use crate::markdown;
 use crate::session::ContentBlock;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -123,42 +124,33 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme
         return;
     }
 
+    // Available width for markdown rendering: panel inner width minus 2-char indent
+    let inner_width = area.width.saturating_sub(2) as usize; // border
+    let md_width = inner_width.saturating_sub(2); // 2-space indent
+
     let mut lines: Vec<Line> = Vec::new();
     for msg in &app.conversation {
         if msg.is_sidechain {
             continue;
         }
-        match msg.role.as_str() {
-            "user" => {
-                lines.push(Line::from(Span::styled("You:", theme.user_label)));
-                for block_content in &msg.content_blocks {
-                    if let ContentBlock::Text(text) = block_content {
-                        for line in text.lines() {
-                            lines.push(Line::from(Span::styled(
-                                format!("  {line}"),
-                                theme.user_message,
-                            )));
-                        }
-                    }
+        let (label, label_style, base_style) = match msg.role.as_str() {
+            "user" => ("You:", theme.user_label, theme.user_message),
+            "assistant" => ("Claude:", theme.assistant_label, theme.assistant_message),
+            _ => continue,
+        };
+
+        lines.push(Line::from(Span::styled(label, label_style)));
+        for block_content in &msg.content_blocks {
+            if let ContentBlock::Text(text) = block_content {
+                let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
+                for md_line in md_lines {
+                    let mut spans = vec![Span::raw("  ")];
+                    spans.extend(md_line.spans);
+                    lines.push(Line::from(spans));
                 }
-                lines.push(Line::from(""));
             }
-            "assistant" => {
-                lines.push(Line::from(Span::styled("Claude:", theme.assistant_label)));
-                for block_content in &msg.content_blocks {
-                    if let ContentBlock::Text(text) = block_content {
-                        for line in text.lines() {
-                            lines.push(Line::from(Span::styled(
-                                format!("  {line}"),
-                                theme.assistant_message,
-                            )));
-                        }
-                    }
-                }
-                lines.push(Line::from(""));
-            }
-            _ => {}
         }
+        lines.push(Line::from(""));
     }
 
     let paragraph = Paragraph::new(lines)
