@@ -223,6 +223,11 @@ Color scheme designed for readability:
 
 - Empty session files: skip silently
 - Sessions with no conversation messages (message_count == 0): excluded from listing
+- Sessions without meaningful prompts: excluded from listing
+  - Empty or whitespace-only `firstPrompt`
+  - Placeholder text (`"No prompt"`)
+  - Error-only prompts (starting with `<local-command-stderr>`)
+- Sessions whose JSONL file no longer exists on disk: excluded from listing (index path only)
 - Malformed JSONL lines: skip without crashing
 - Very long messages: truncate in list view, wrap in conversation view
 - Unicode/CJK text: render correctly

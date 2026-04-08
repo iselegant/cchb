@@ -186,6 +186,24 @@ fn parse_content_blocks(content: &Option<serde_json::Value>) -> Option<Vec<Conte
     }
 }
 
+/// Check if a first_prompt represents a meaningful user conversation.
+///
+/// Returns false for empty prompts, placeholder text ("No prompt"),
+/// and error-only prompts (e.g., hook stderr output).
+fn has_meaningful_prompt(first_prompt: &str) -> bool {
+    let trimmed = first_prompt.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed == "No prompt" {
+        return false;
+    }
+    if trimmed.starts_with("<local-command-stderr>") {
+        return false;
+    }
+    true
+}
+
 fn parse_timestamp(value: &Option<serde_json::Value>) -> Option<DateTime<Utc>> {
     let v = value.as_ref()?;
     match v {
@@ -299,11 +317,20 @@ fn load_sessions_from_index(
             continue;
         }
 
+        let first_prompt = entry.first_prompt.unwrap_or_default();
+        if !has_meaningful_prompt(&first_prompt) {
+            continue;
+        }
+
+        if !file_path.exists() {
+            continue;
+        }
+
         sessions.push(SessionIndex {
             session_id,
             project_path: effective_project_path,
             project_display: project_display.to_string(),
-            first_prompt: entry.first_prompt.unwrap_or_default(),
+            first_prompt,
             summary: entry.summary,
             created,
             modified,
@@ -407,6 +434,10 @@ fn load_sessions_from_jsonl_scan(
         let effective_project_path = cwd.unwrap_or_else(|| project_path.to_string());
 
         if message_count == 0 {
+            continue;
+        }
+
+        if !has_meaningful_prompt(&first_prompt) {
             continue;
         }
 
@@ -825,6 +856,9 @@ mod tests {
         )
         .unwrap();
 
+        // Create JSONL file for the session that should pass filtering
+        fs::write(project_dir.join("has-messages.jsonl"), "").unwrap();
+
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].session_id, "has-messages");
@@ -857,6 +891,161 @@ mod tests {
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].session_id, "sess-with-msgs");
+    }
+
+    #[test]
+    fn test_has_meaningful_prompt_filters_empty() {
+        assert!(!has_meaningful_prompt(""));
+        assert!(!has_meaningful_prompt("   "));
+    }
+
+    #[test]
+    fn test_has_meaningful_prompt_filters_no_prompt() {
+        assert!(!has_meaningful_prompt("No prompt"));
+    }
+
+    #[test]
+    fn test_has_meaningful_prompt_filters_stderr_errors() {
+        assert!(!has_meaningful_prompt(
+            "<local-command-stderr>Error: Bash command permission check failed"
+        ));
+        assert!(!has_meaningful_prompt(
+            "<local-command-stderr>Error: Bash command failed for pattern"
+        ));
+    }
+
+    #[test]
+    fn test_has_meaningful_prompt_accepts_real_prompts() {
+        assert!(has_meaningful_prompt("Hello world"));
+        assert!(has_meaningful_prompt("Run terraform plan"));
+        assert!(has_meaningful_prompt("日本語のプロンプト"));
+    }
+
+    #[test]
+    fn test_discover_sessions_excludes_no_prompt_from_index() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-proj2");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "real-session",
+                    "fullPath": project_dir.join("real-session.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Hello world",
+                    "messageCount": 4,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T12:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "no-prompt-session",
+                    "fullPath": project_dir.join("no-prompt-session.jsonl").to_str().unwrap(),
+                    "firstPrompt": "No prompt",
+                    "messageCount": 2,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "stderr-session",
+                    "fullPath": project_dir.join("stderr-session.jsonl").to_str().unwrap(),
+                    "firstPrompt": "<local-command-stderr>Error: Bash command permission check failed",
+                    "messageCount": 2,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        // Create JSONL files so they pass file existence check
+        fs::write(project_dir.join("real-session.jsonl"), "").unwrap();
+        fs::write(project_dir.join("no-prompt-session.jsonl"), "").unwrap();
+        fs::write(project_dir.join("stderr-session.jsonl"), "").unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "real-session");
+    }
+
+    #[test]
+    fn test_discover_sessions_excludes_missing_jsonl_from_index() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-proj3");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "existing-session",
+                    "fullPath": project_dir.join("existing-session.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Hello",
+                    "messageCount": 4,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T12:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "deleted-session",
+                    "fullPath": project_dir.join("deleted-session.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Was here",
+                    "messageCount": 6,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        // Only create the first file — second is "deleted"
+        fs::write(project_dir.join("existing-session.jsonl"), "").unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "existing-session");
+    }
+
+    #[test]
+    fn test_discover_sessions_excludes_no_prompt_from_jsonl_scan() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir.join("projects").join("-Users-bar-code-app2");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Session with real conversation
+        let jsonl_real = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"Hello"},"timestamp":"2026-04-07T09:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}]},"timestamp":"2026-04-07T09:01:00Z"}"#;
+        fs::write(project_dir.join("sess-real.jsonl"), jsonl_real).unwrap();
+
+        // Session with only stderr error content
+        let jsonl_stderr = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"<local-command-stderr>Error: Bash command permission check failed"},"timestamp":"2026-04-07T09:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Error"}]},"timestamp":"2026-04-07T09:01:00Z"}"#;
+        fs::write(project_dir.join("sess-stderr.jsonl"), jsonl_stderr).unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "sess-real");
     }
 
     #[test]
@@ -902,6 +1091,10 @@ mod tests {
             serde_json::to_string(&index).unwrap(),
         )
         .unwrap();
+
+        // Create JSONL files
+        fs::write(project_dir.join("main-sess.jsonl"), "").unwrap();
+        fs::write(project_dir.join("side-sess.jsonl"), "").unwrap();
 
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
