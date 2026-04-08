@@ -56,6 +56,11 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
         .borders(Borders::ALL)
         .border_style(border_style);
 
+    // Calculate items_per_page from actual panel height (2 lines for border)
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let lines_per_item = 4; // project+branch, date, preview, blank
+    app.items_per_page = (inner_height / lines_per_item).max(1);
+
     let items: Vec<ListItem> = app
         .filtered_indices
         .iter()
@@ -250,7 +255,7 @@ fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) 
 }
 
 fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
-    let area = centered_rect(50, 18, frame.area());
+    let area = centered_rect(50, 19, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -261,6 +266,7 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
     let help_lines = vec![
         help_line("j / k", "Move down / up", theme),
         help_line("g / G", "Jump to top / bottom", theme),
+        help_line("Right / Left", "Next / Previous page", theme),
         help_line("Ctrl+d / Ctrl+u", "Half page down / up", theme),
         help_line("Enter / l", "Open session", theme),
         help_line("Esc / q", "Back / Quit", theme),

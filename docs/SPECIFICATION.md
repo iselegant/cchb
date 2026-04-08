@@ -143,6 +143,8 @@ Each JSONL file consists of one message per line:
 | `k` / `Up` | Normal | Select previous session |
 | `g` | Normal/Viewing | Jump to top |
 | `G` | Normal/Viewing | Jump to bottom |
+| `Right` | Normal | Next page of sessions |
+| `Left` | Normal | Previous page of sessions |
 | `Ctrl+d` | Normal/Viewing | Half-page scroll down |
 | `Ctrl+u` | Normal/Viewing | Half-page scroll up |
 | `Enter` / `l` | Normal | Open session (enter Viewing mode) |
