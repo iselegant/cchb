@@ -33,11 +33,17 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         (KeyCode::Char('G'), _) => {
             app.go_bottom();
         }
+        (KeyCode::Right, _) => {
+            app.page_down();
+        }
+        (KeyCode::Left, _) => {
+            app.page_up();
+        }
         (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_down(20);
+            app.half_page_down(app.items_per_page * 2);
         }
         (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_up(20);
+            app.half_page_up(app.items_per_page * 2);
         }
         (KeyCode::Enter, _) | (KeyCode::Char('l'), _) => {
             if let Some(session) = app.selected_session() {
@@ -94,10 +100,10 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.conversation_scroll = usize::MAX / 2;
         }
         (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_down(20);
+            app.half_page_down(app.items_per_page * 2);
         }
         (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_up(20);
+            app.half_page_up(app.items_per_page * 2);
         }
         (KeyCode::Char(']'), _) => {
             let prev_idx = app.selected_index;
@@ -277,15 +283,39 @@ mod tests {
     #[test]
     fn test_ctrl_d_half_page_down() {
         let mut app = AppState::new(make_sessions(30));
+        app.items_per_page = 8;
         handle_key(&mut app, make_key_ctrl('d')).unwrap();
-        assert_eq!(app.selected_index, 10); // half of 20
+        // half of (items_per_page * 2) = items_per_page = 8
+        assert_eq!(app.selected_index, 8);
     }
 
     #[test]
     fn test_ctrl_u_half_page_up() {
         let mut app = AppState::new(make_sessions(30));
-        app.selected_index = 15;
+        app.items_per_page = 8;
+        app.selected_index = 20;
         handle_key(&mut app, make_key_ctrl('u')).unwrap();
+        assert_eq!(app.selected_index, 12);
+    }
+
+    #[test]
+    fn test_right_arrow_page_down() {
+        let mut app = AppState::new(make_sessions(30));
+        app.items_per_page = 5;
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert_eq!(app.selected_index, 5);
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert_eq!(app.selected_index, 10);
+    }
+
+    #[test]
+    fn test_left_arrow_page_up() {
+        let mut app = AppState::new(make_sessions(30));
+        app.items_per_page = 5;
+        app.selected_index = 15;
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        assert_eq!(app.selected_index, 10);
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
         assert_eq!(app.selected_index, 5);
     }
 

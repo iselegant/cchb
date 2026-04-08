@@ -42,6 +42,8 @@ pub struct AppState {
     pub resume_session_id: Option<String>,
     /// Project path for the session to resume (used as cwd for claude --resume)
     pub resume_project_path: Option<String>,
+    /// Number of session items visible in the list panel (updated each render cycle)
+    pub items_per_page: usize,
 }
 
 impl AppState {
@@ -68,6 +70,7 @@ impl AppState {
             loaded_session_id: None,
             resume_session_id: None,
             resume_project_path: None,
+            items_per_page: 5,
         }
     }
 
@@ -140,6 +143,19 @@ impl AppState {
             }
             _ => {}
         }
+    }
+
+    pub fn page_down(&mut self) {
+        if !self.filtered_indices.is_empty() {
+            let max = self.filtered_indices.len() - 1;
+            self.selected_index = (self.selected_index + self.items_per_page).min(max);
+            self.sync_list_state();
+        }
+    }
+
+    pub fn page_up(&mut self) {
+        self.selected_index = self.selected_index.saturating_sub(self.items_per_page);
+        self.sync_list_state();
     }
 
     pub fn scroll_conversation_down(&mut self) {
@@ -545,6 +561,53 @@ mod tests {
         app.request_resume();
         assert!(app.should_quit);
         assert_eq!(app.resume_session_id.as_deref(), Some("sess-0"));
+    }
+
+    #[test]
+    fn test_page_down() {
+        let mut app = AppState::new(make_sessions(30));
+        app.items_per_page = 5;
+        app.page_down();
+        assert_eq!(app.selected_index, 5);
+        app.page_down();
+        assert_eq!(app.selected_index, 10);
+    }
+
+    #[test]
+    fn test_page_down_clamp() {
+        let mut app = AppState::new(make_sessions(10));
+        app.items_per_page = 5;
+        app.selected_index = 7;
+        app.page_down();
+        assert_eq!(app.selected_index, 9); // clamped to last
+    }
+
+    #[test]
+    fn test_page_down_empty() {
+        let mut app = AppState::new(vec![]);
+        app.items_per_page = 5;
+        app.page_down();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_page_up() {
+        let mut app = AppState::new(make_sessions(30));
+        app.items_per_page = 5;
+        app.selected_index = 15;
+        app.page_up();
+        assert_eq!(app.selected_index, 10);
+        app.page_up();
+        assert_eq!(app.selected_index, 5);
+    }
+
+    #[test]
+    fn test_page_up_clamp() {
+        let mut app = AppState::new(make_sessions(10));
+        app.items_per_page = 5;
+        app.selected_index = 3;
+        app.page_up();
+        assert_eq!(app.selected_index, 0); // clamped to 0
     }
 
     #[test]
