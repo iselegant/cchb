@@ -32,6 +32,7 @@ pub struct Theme {
     pub assistant_message: Style,
     pub assistant_border: Style,
     pub search_input: Style,
+    pub search_highlight: Style,
     pub help_title: Style,
     pub help_key: Style,
     pub help_desc: Style,
@@ -64,6 +65,10 @@ impl Theme {
             assistant_message: Style::default().fg(Color::White),
             assistant_border: Style::default().fg(Color::Magenta),
             search_input: Style::default().fg(Color::Yellow),
+            search_highlight: Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
             help_title: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

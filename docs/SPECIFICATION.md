@@ -172,6 +172,8 @@ Each JSONL file consists of one message per line:
 - Search targets: project name, first message, branch name, summary
 - Real-time filtering of session list as user types
 - `Enter` to confirm, `Esc` to cancel
+- **Active search indicator**: When a search query is active after confirmation, it is displayed in the status bar
+- **Conversation highlight**: Matching substrings in the conversation view are highlighted (case-insensitive, black text on yellow background)
 
 ### FR-5: Date Range Filter (d key)
 
