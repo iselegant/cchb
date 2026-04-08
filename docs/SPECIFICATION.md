@@ -176,7 +176,9 @@ Each JSONL file consists of one message per line:
 ### FR-5: Date Range Filter (d key)
 
 - Press `d` to activate date filter mode
-- Input From/To dates
+- **Preset values**: `From` defaults to 7 days before today, `To` defaults to today
+- **Up/Down cursor keys**: Increment/decrement the active date field by 1 day
+- Manual text input is also supported (YYYY-MM-DD format)
 - `Tab` to switch between From/To fields
 - `Enter` to apply, `Esc` to cancel
 
