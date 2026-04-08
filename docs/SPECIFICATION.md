@@ -169,8 +169,8 @@ Each JSONL file consists of one message per line:
 ### FR-4: Fuzzy Search (f key)
 
 - Press `f` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
-- fzf-like fuzzy matching
-- Search targets: project name, first message, branch name, summary, and full conversation content (on-demand loading)
+- Substring matching against conversation content (case-insensitive)
+- Search targets: full conversation content (all displayed user and assistant text blocks, excluding sidechains)
 - Real-time filtering of session list as user types
 - `Enter` to confirm, `Esc` to cancel
 - **Active search indicator**: When a search query is active after confirmation, it is displayed in the status bar
