@@ -104,7 +104,7 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
     frame.render_stateful_widget(list, area, &mut app.list_state);
 }
 
-fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme: &Theme) {
+fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &Theme) {
     let border_style = if app.active_panel == Panel::ConversationView {
         theme.border_active
     } else {
@@ -187,6 +187,12 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme
     } else {
         lines
     };
+
+    // Clamp scroll so content cannot scroll past the last line
+    let visible_height = area.height.saturating_sub(2) as usize; // subtract border lines
+    let total_lines = lines.len();
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    app.conversation_scroll = app.conversation_scroll.min(max_scroll);
 
     let paragraph = Paragraph::new(lines)
         .block(block)

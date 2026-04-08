@@ -134,6 +134,7 @@ Each JSONL file consists of one message per line:
 - Extract only important elements (per Display Rules)
 - Visually distinguish user messages from assistant responses
 - Word-wrap long text
+- **Scroll clamping**: Scroll position is clamped so that content cannot scroll past the last line (prevents blank/empty view when at end of conversation)
 - **Markdown Rendering**: Message text is parsed and rendered with visual styling:
 
 | Markdown Element | Rendering |
