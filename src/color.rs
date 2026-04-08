@@ -89,8 +89,10 @@ impl Theme {
                     .add_modifier(Modifier::BOLD),
                 bold: Style::default().add_modifier(Modifier::BOLD),
                 italic: Style::default().add_modifier(Modifier::ITALIC),
-                inline_code: Style::default().fg(Color::Yellow).bg(Color::DarkGray),
-                code_block: Style::default().fg(Color::White).bg(Color::DarkGray),
+                inline_code: Style::default().fg(Color::Yellow).bg(Color::Indexed(236)),
+                code_block: Style::default()
+                    .fg(Color::Indexed(252))
+                    .bg(Color::Indexed(236)),
                 code_lang_label: Style::default()
                     .fg(Color::DarkGray)
                     .add_modifier(Modifier::ITALIC),
