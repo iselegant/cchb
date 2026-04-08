@@ -164,9 +164,12 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme
             if let ContentBlock::Text(text) = block_content {
                 let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
                 for md_line in md_lines {
-                    let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
-                    spans.extend(md_line.spans);
-                    lines.push(Line::from(spans));
+                    let wrapped = markdown::wrap_line(md_line, md_width);
+                    for wrapped_line in wrapped {
+                        let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
+                        spans.extend(wrapped_line.spans);
+                        lines.push(Line::from(spans));
+                    }
                 }
             }
         }

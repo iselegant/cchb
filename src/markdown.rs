@@ -532,6 +532,118 @@ pub fn render_markdown(
     renderer.render(text)
 }
 
+/// Wrap a single `Line` into multiple lines so each fits within `max_width` display columns.
+/// Prefers breaking at word boundaries (ASCII spaces).
+pub fn wrap_line(line: Line<'static>, max_width: usize) -> Vec<Line<'static>> {
+    if max_width == 0 {
+        return vec![line];
+    }
+
+    let total_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
+    if total_width <= max_width {
+        return vec![line];
+    }
+
+    let mut result: Vec<Line<'static>> = Vec::new();
+    let mut current: Vec<Span<'static>> = Vec::new();
+    let mut current_width: usize = 0;
+
+    for span in line.spans {
+        let style = span.style;
+        let full_text: String = span.content.to_string();
+        let mut offset = 0;
+
+        while offset < full_text.len() {
+            let remaining = &full_text[offset..];
+            let remaining_w = remaining.width();
+            let space_left = max_width.saturating_sub(current_width);
+
+            if remaining_w <= space_left {
+                current.push(Span::styled(remaining.to_string(), style));
+                current_width += remaining_w;
+                offset = full_text.len();
+            } else if space_left == 0 {
+                if !current.is_empty() {
+                    result.push(Line::from(std::mem::take(&mut current)));
+                    current_width = 0;
+                }
+            } else {
+                let break_byte = find_break_point(remaining, space_left);
+                if break_byte == 0 {
+                    if !current.is_empty() {
+                        result.push(Line::from(std::mem::take(&mut current)));
+                        current_width = 0;
+                    } else {
+                        let forced = force_break_at(remaining, max_width);
+                        current.push(Span::styled(remaining[..forced].to_string(), style));
+                        result.push(Line::from(std::mem::take(&mut current)));
+                        current_width = 0;
+                        offset += forced;
+                        offset += count_leading_spaces(&full_text[offset..]);
+                    }
+                } else {
+                    let chunk = remaining[..break_byte].trim_end();
+                    current.push(Span::styled(chunk.to_string(), style));
+                    result.push(Line::from(std::mem::take(&mut current)));
+                    current_width = 0;
+                    offset += break_byte;
+                    offset += count_leading_spaces(&full_text[offset..]);
+                }
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        result.push(Line::from(current));
+    }
+
+    if result.is_empty() {
+        result.push(Line::from(""));
+    }
+
+    result
+}
+
+/// Find byte position to break text at, preferring word boundaries.
+fn find_break_point(text: &str, max_width: usize) -> usize {
+    let mut width = 0;
+    let mut last_space_end = 0;
+    let mut found_space = false;
+
+    for (i, ch) in text.char_indices() {
+        let ch_w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + ch_w > max_width {
+            if ch == ' ' {
+                return i;
+            }
+            return if found_space { last_space_end } else { i };
+        }
+        width += ch_w;
+        if ch == ' ' {
+            last_space_end = i + 1;
+            found_space = true;
+        }
+    }
+    text.len()
+}
+
+/// Force break at max_width display columns (for words longer than max_width).
+fn force_break_at(text: &str, max_width: usize) -> usize {
+    let mut width = 0;
+    for (i, ch) in text.char_indices() {
+        let ch_w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + ch_w > max_width {
+            return i;
+        }
+        width += ch_w;
+    }
+    text.len()
+}
+
+fn count_leading_spaces(text: &str) -> usize {
+    text.bytes().take_while(|&b| b == b' ').count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -878,6 +990,82 @@ mod tests {
         assert!(total <= 30, "Total {total} exceeds 30");
         for &w in &widths {
             assert!(w >= 3, "Column width {w} is below minimum 3");
+        }
+    }
+
+    #[test]
+    fn test_wrap_line_short_line_unchanged() {
+        let line = Line::from("short");
+        let result = wrap_line(line, 20);
+        assert_eq!(result.len(), 1);
+        assert_eq!(spans_text(&result), "short");
+    }
+
+    #[test]
+    fn test_wrap_line_breaks_at_word_boundary() {
+        let line = Line::from("hello world foo");
+        // Width 11 fits "hello world" exactly, but "hello world foo" = 15
+        let result = wrap_line(line, 11);
+        assert_eq!(result.len(), 2);
+        let first: String = result[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let second: String = result[1].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(first, "hello world");
+        assert_eq!(second, "foo");
+    }
+
+    #[test]
+    fn test_wrap_line_preserves_styles() {
+        let style_a = Style::default().fg(Color::Red);
+        let style_b = Style::default().fg(Color::Blue);
+        let line = Line::from(vec![
+            Span::styled("red ", style_a),
+            Span::styled("blue text here", style_b),
+        ]);
+        // "red blue text here" = 18 chars. Width 10 should wrap.
+        let result = wrap_line(line, 10);
+        assert!(
+            result.len() >= 2,
+            "Expected at least 2 lines, got {}",
+            result.len()
+        );
+        // First line should contain red-styled span
+        assert!(
+            result[0]
+                .spans
+                .iter()
+                .any(|s| s.style.fg == Some(Color::Red))
+        );
+    }
+
+    #[test]
+    fn test_wrap_line_cjk_characters() {
+        // Each CJK char is 2 columns wide
+        // "あいうえお" = 10 columns
+        let line = Line::from("あいうえお かきくけこ");
+        // Width 12 should fit "あいうえお " (11 cols) then wrap
+        let result = wrap_line(line, 12);
+        assert!(result.len() >= 2, "Expected wrapping for CJK text");
+        for r in &result {
+            let w: usize = r.spans.iter().map(|s| s.content.width()).sum();
+            assert!(w <= 12, "Line width {w} exceeds max 12");
+        }
+    }
+
+    #[test]
+    fn test_wrap_line_zero_width_returns_as_is() {
+        let line = Line::from("test");
+        let result = wrap_line(line, 0);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_wrap_line_long_word_force_break() {
+        let line = Line::from("abcdefghijklmnop");
+        let result = wrap_line(line, 5);
+        assert!(result.len() >= 3);
+        for r in &result {
+            let w: usize = r.spans.iter().map(|s| s.content.width()).sum();
+            assert!(w <= 5, "Line width {w} exceeds max 5");
         }
     }
 }
