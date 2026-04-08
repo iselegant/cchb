@@ -463,6 +463,50 @@ fn load_sessions_from_jsonl_scan(
     Ok(sessions)
 }
 
+/// Extract all text content from a session JSONL file as a single searchable string.
+/// This is a lightweight alternative to `load_conversation()` that avoids building
+/// full `ConversationMessage` structs — it only extracts text for search purposes.
+pub fn extract_searchable_text(path: &Path) -> String {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+
+    let mut texts = Vec::new();
+    for line in content.lines() {
+        if let Ok(raw) = serde_json::from_str::<serde_json::Value>(line) {
+            let msg_type = raw.get("type").and_then(|v| v.as_str());
+            if msg_type != Some("user") && msg_type != Some("assistant") {
+                continue;
+            }
+            // Skip sidechains — they are not shown in conversation view
+            if raw
+                .get("isSidechain")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if let Some(msg) = raw.get("message")
+                && let Some(content) = msg.get("content")
+            {
+                if let Some(s) = content.as_str() {
+                    texts.push(s.to_string());
+                } else if let Some(arr) = content.as_array() {
+                    for block in arr {
+                        if block.get("type").and_then(|v| v.as_str()) == Some("text")
+                            && let Some(text) = block.get("text").and_then(|v| v.as_str())
+                        {
+                            texts.push(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    texts.join(" ")
+}
+
 /// Load and parse a conversation from a session JSONL file.
 pub fn load_conversation(path: &Path) -> Result<Vec<ConversationMessage>> {
     let content = fs::read_to_string(path)
@@ -1144,5 +1188,76 @@ mod tests {
         // Index version should take priority
         assert_eq!(sessions[0].first_prompt, "Index version");
         assert_eq!(sessions[0].message_count, 10);
+    }
+
+    // --- extract_searchable_text tests ---
+
+    #[test]
+    fn test_extract_searchable_text_basic() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("search-test.jsonl");
+
+        let content = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"実行日を設定してください"},"timestamp":"2026-04-08T10:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"実行日の設定を行います"}]},"timestamp":"2026-04-08T10:00:01Z"}"#;
+
+        fs::write(&file_path, content).unwrap();
+
+        let text = extract_searchable_text(&file_path);
+        assert!(text.contains("実行日を設定してください"));
+        assert!(text.contains("実行日の設定を行います"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_skips_non_message_types() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("skip-test.jsonl");
+
+        let content = r#"{"type":"file-history-snapshot","messageId":"snap1","snapshot":{}}
+{"type":"user","uuid":"u1","message":{"role":"user","content":"Hello"},"timestamp":"2026-04-08T10:00:00Z"}
+{"type":"system","content":"System message"}"#;
+
+        fs::write(&file_path, content).unwrap();
+
+        let text = extract_searchable_text(&file_path);
+        assert!(text.contains("Hello"));
+        assert!(!text.contains("System message"));
+        assert!(!text.contains("snapshot"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_extracts_only_text_blocks() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("blocks-test.jsonl");
+
+        let content = r#"{"type":"assistant","uuid":"a1","parentUuid":null,"isSidechain":false,"message":{"role":"assistant","content":[{"type":"thinking","thinking":"internal thought"},{"type":"text","text":"Visible response"},{"type":"tool_use","id":"t1","name":"Bash","input":{}}]},"timestamp":"2026-04-08T10:00:00Z"}"#;
+
+        fs::write(&file_path, content).unwrap();
+
+        let text = extract_searchable_text(&file_path);
+        assert!(text.contains("Visible response"));
+        assert!(!text.contains("internal thought"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_skips_sidechains() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("sidechain-test.jsonl");
+
+        let content = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"Main conversation"},"timestamp":"2026-04-08T10:00:00Z"}
+{"type":"user","uuid":"u2","parentUuid":"u1","isSidechain":true,"message":{"role":"user","content":"Sidechain hidden text"},"timestamp":"2026-04-08T10:00:01Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u2","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Sidechain response"}]},"timestamp":"2026-04-08T10:00:02Z"}"#;
+
+        fs::write(&file_path, content).unwrap();
+
+        let text = extract_searchable_text(&file_path);
+        assert!(text.contains("Main conversation"));
+        assert!(!text.contains("Sidechain hidden text"));
+        assert!(!text.contains("Sidechain response"));
+    }
+
+    #[test]
+    fn test_extract_searchable_text_missing_file() {
+        let text = extract_searchable_text(Path::new("/nonexistent/path.jsonl"));
+        assert!(text.is_empty());
     }
 }

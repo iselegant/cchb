@@ -155,20 +155,24 @@ fn handle_search_key(app: &mut AppState, key: KeyEvent) {
         KeyCode::Enter => {
             // Apply search and return to normal
             let query = app.search_query.clone();
-            let indices = filter::fuzzy_filter(&app.sessions, &query);
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &query, cache);
             app.update_filtered_indices(indices);
+            app.clear_search_content_cache();
             app.mode = AppMode::Normal;
         }
         KeyCode::Backspace => {
             app.search_query.pop();
             // Live filter
-            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query);
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
             app.update_filtered_indices(indices);
         }
         KeyCode::Char(c) => {
             app.search_query.push(c);
             // Live filter
-            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query);
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
             app.update_filtered_indices(indices);
         }
         _ => {}
@@ -186,7 +190,13 @@ fn handle_date_filter_key(app: &mut AppState, key: KeyEvent) {
         KeyCode::Enter => {
             let from = filter::parse_date_input(&app.date_from_input);
             let to = filter::parse_date_input(&app.date_to_input);
-            let indices = filter::apply_filters(&app.sessions, &app.search_query, from, to);
+            let indices = filter::apply_filters(
+                &app.sessions,
+                &app.search_query,
+                from,
+                to,
+                &app.search_content_cache,
+            );
             app.update_filtered_indices(indices);
             app.mode = AppMode::Normal;
         }

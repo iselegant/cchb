@@ -38,8 +38,13 @@ fn fuzzy_match(target: &str, query: &str) -> bool {
 }
 
 /// Filter sessions by fuzzy matching against a query string.
-/// Matches against project name, first prompt, git branch, and summary.
-pub fn fuzzy_filter(sessions: &[SessionIndex], query: &str) -> Vec<usize> {
+/// Matches against project name, first prompt, git branch, summary,
+/// and full conversation content from the pre-built cache.
+pub fn fuzzy_filter(
+    sessions: &[SessionIndex],
+    query: &str,
+    content_cache: &[String],
+) -> Vec<usize> {
     if query.is_empty() {
         return (0..sessions.len()).collect();
     }
@@ -47,9 +52,18 @@ pub fn fuzzy_filter(sessions: &[SessionIndex], query: &str) -> Vec<usize> {
     sessions
         .iter()
         .enumerate()
-        .filter(|(_, session)| {
+        .filter(|(i, session)| {
             let text = session_search_text(session);
-            fuzzy_match(&text, &query_lower)
+            if fuzzy_match(&text, &query_lower) {
+                return true;
+            }
+            // Fall back to cached conversation content (substring match, not fuzzy)
+            if let Some(cached) = content_cache.get(*i)
+                && !cached.is_empty()
+            {
+                return cached.to_lowercase().contains(&query_lower);
+            }
+            false
         })
         .map(|(i, _)| i)
         .collect()
@@ -93,8 +107,9 @@ pub fn apply_filters(
     query: &str,
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
+    content_cache: &[String],
 ) -> Vec<usize> {
-    let fuzzy_results = fuzzy_filter(sessions, query);
+    let fuzzy_results = fuzzy_filter(sessions, query, content_cache);
     let date_results = date_filter(sessions, from, to);
 
     // Intersect both results
@@ -113,7 +128,7 @@ pub fn parse_date_input(input: &str) -> Option<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::SessionIndex;
+    use crate::session::{self, SessionIndex};
     use chrono::Utc;
     use std::path::PathBuf;
 
@@ -206,42 +221,42 @@ mod tests {
     #[test]
     fn test_fuzzy_filter_by_prompt() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "terraform");
+        let result = fuzzy_filter(&sessions, "terraform", &[]);
         assert_eq!(result, vec![0, 3]); // both terraform-infra sessions
     }
 
     #[test]
     fn test_fuzzy_filter_by_project() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "web");
+        let result = fuzzy_filter(&sessions, "web", &[]);
         assert_eq!(result, vec![1]);
     }
 
     #[test]
     fn test_fuzzy_filter_by_branch() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "auth");
+        let result = fuzzy_filter(&sessions, "auth", &[]);
         assert_eq!(result, vec![1]);
     }
 
     #[test]
     fn test_fuzzy_filter_empty_query_returns_all() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "");
+        let result = fuzzy_filter(&sessions, "", &[]);
         assert_eq!(result, vec![0, 1, 2, 3]);
     }
 
     #[test]
     fn test_fuzzy_filter_case_insensitive() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "TERRAFORM");
+        let result = fuzzy_filter(&sessions, "TERRAFORM", &[]);
         assert_eq!(result, vec![0, 3]);
     }
 
     #[test]
     fn test_fuzzy_filter_no_match() {
         let sessions = sample_sessions();
-        let result = fuzzy_filter(&sessions, "zzzzz");
+        let result = fuzzy_filter(&sessions, "zzzzz", &[]);
         assert!(result.is_empty());
     }
 
@@ -285,7 +300,7 @@ mod tests {
     fn test_apply_filters_combined() {
         let sessions = sample_sessions();
         let from = NaiveDate::from_ymd_opt(2026, 4, 1);
-        let result = apply_filters(&sessions, "terraform", from, None);
+        let result = apply_filters(&sessions, "terraform", from, None, &[]);
         assert_eq!(result, vec![0]); // only s1 matches both terraform + after April 1
     }
 
@@ -293,7 +308,7 @@ mod tests {
     fn test_apply_filters_empty_query_with_date() {
         let sessions = sample_sessions();
         let from = NaiveDate::from_ymd_opt(2026, 4, 5);
-        let result = apply_filters(&sessions, "", from, None);
+        let result = apply_filters(&sessions, "", from, None, &[]);
         assert_eq!(result, vec![1, 2]); // April 5 and April 8
     }
 
@@ -315,5 +330,107 @@ mod tests {
     fn test_parse_date_input_trimmed() {
         let date = parse_date_input("  2026-04-08  ");
         assert_eq!(date, NaiveDate::from_ymd_opt(2026, 4, 8));
+    }
+
+    // --- conversation content search tests ---
+
+    #[test]
+    fn test_fuzzy_filter_matches_conversation_content() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("content-search.jsonl");
+
+        // Session metadata does NOT contain "実行日", but conversation content does
+        let jsonl = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"設定を確認して"},"timestamp":"2026-04-08T10:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"実行日は2026-04-08です"}]},"timestamp":"2026-04-08T10:00:01Z"}"#;
+        fs::write(&file_path, jsonl).unwrap();
+
+        let sessions = vec![SessionIndex {
+            session_id: "s1".into(),
+            project_path: "/test/myproject".into(),
+            project_display: "myproject".into(),
+            first_prompt: "設定を確認して".into(),
+            summary: None,
+            created: Utc::now(),
+            modified: Utc::now(),
+            git_branch: Some("main".into()),
+            message_count: 2,
+            file_path,
+        }];
+
+        // "実行日" is only in the assistant's response, not in metadata
+        let cache = vec![session::extract_searchable_text(&sessions[0].file_path)];
+        let result = fuzzy_filter(&sessions, "実行日", &cache);
+        assert_eq!(result, vec![0]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_skips_content_when_metadata_matches() {
+        // When metadata matches, content search is not needed — empty cache is fine
+        let sessions = sample_sessions();
+        let result = fuzzy_filter(&sessions, "terraform", &[]);
+        assert_eq!(result, vec![0, 3]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_no_match_in_content() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("no-match.jsonl");
+
+        let jsonl = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"Hello"},"timestamp":"2026-04-08T10:00:00Z"}"#;
+        fs::write(&file_path, jsonl).unwrap();
+
+        let sessions = vec![SessionIndex {
+            session_id: "s1".into(),
+            project_path: "/test/proj".into(),
+            project_display: "proj".into(),
+            first_prompt: "Hello".into(),
+            summary: None,
+            created: Utc::now(),
+            modified: Utc::now(),
+            git_branch: None,
+            message_count: 1,
+            file_path,
+        }];
+
+        let cache = vec![session::extract_searchable_text(&sessions[0].file_path)];
+        let result = fuzzy_filter(&sessions, "zzzzz", &cache);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_content_search_uses_substring_not_fuzzy() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("substring-test.jsonl");
+
+        // Contains 実, 行, 日 as scattered characters but NOT "実行日" as substring
+        let jsonl = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"実装を行った日のログ"},"timestamp":"2026-04-08T10:00:00Z"}"#;
+        fs::write(&file_path, jsonl).unwrap();
+
+        let sessions = vec![SessionIndex {
+            session_id: "s1".into(),
+            project_path: "/test/proj".into(),
+            project_display: "proj".into(),
+            first_prompt: "テスト".into(),
+            summary: None,
+            created: Utc::now(),
+            modified: Utc::now(),
+            git_branch: None,
+            message_count: 1,
+            file_path,
+        }];
+
+        // "実行日" should NOT match "実装を行った日のログ" via substring
+        let cache = vec![session::extract_searchable_text(&sessions[0].file_path)];
+        let result = fuzzy_filter(&sessions, "実行日", &cache);
+        assert!(result.is_empty());
     }
 }
