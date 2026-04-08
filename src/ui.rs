@@ -111,22 +111,71 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         theme.border_inactive
     };
 
-    let block = Block::default()
-        .title(" Conversation ")
+    // Clone session metadata before mutably borrowing app later
+    let session_meta: Option<(String, String, Option<String>)> =
+        app.selected_session().map(|session| {
+            let session_id = session.session_id.clone();
+            let project_path = session.project_path.clone();
+            let branch = session.git_branch.clone();
+            (session_id, project_path, branch)
+        });
+
+    // Split area: header (5 lines = border + 3 content lines + border) + conversation body
+    let chunks = Layout::vertical([Constraint::Length(5), Constraint::Min(1)]).split(area);
+
+    // Render session header pane
+    let header_block = Block::default()
+        .title(Line::from(Span::styled(" Conversation ", theme.title)))
         .borders(Borders::ALL)
+        .border_style(border_style);
+
+    if let Some((session_id, project_path, branch)) = &session_meta {
+        let label_style = Style::default().fg(Color::Gray);
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled("ID:        ", label_style),
+                Span::styled(session_id.as_str(), Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(vec![
+                Span::styled("Directory: ", label_style),
+                Span::styled(project_path.as_str(), theme.session_project),
+            ]),
+        ];
+        lines.push(if let Some(branch) = branch {
+            Line::from(vec![
+                Span::styled("Branch:    ", label_style),
+                Span::styled(branch.as_str(), theme.session_branch),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("Branch:    ", label_style),
+                Span::styled("-", label_style),
+            ])
+        });
+        let header = Paragraph::new(lines).block(header_block);
+        frame.render_widget(header, chunks[0]);
+    } else {
+        let header = Paragraph::new("").block(header_block);
+        frame.render_widget(header, chunks[0]);
+    }
+
+    // Conversation body
+    let body_area = chunks[1];
+    let body_block = Block::default()
+        .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
         .border_style(border_style);
 
     if app.conversation.is_empty() {
         let placeholder = Paragraph::new("Select a session to view conversation")
-            .block(block)
+            .block(body_block)
             .style(theme.session_preview);
-        frame.render_widget(placeholder, area);
+        frame.render_widget(placeholder, body_area);
         return;
     }
 
     // Available width for markdown rendering:
     // panel inner width minus border prefix ("│ " = 2 chars) and content indent (2 chars)
-    let inner_width = area.width.saturating_sub(2) as usize; // panel border
+    let inner_width = body_area.width.saturating_sub(2) as usize; // panel border
     let border_prefix_width = 2; // "│ "
     let content_indent_width = 2; // "  "
     let md_width = inner_width
@@ -198,17 +247,17 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     };
 
     // Clamp scroll so content cannot scroll past the last line
-    let visible_height = area.height.saturating_sub(2) as usize; // subtract border lines
+    let visible_height = body_area.height.saturating_sub(2) as usize; // subtract border lines
     let total_lines = lines.len();
     let max_scroll = total_lines.saturating_sub(visible_height);
     app.conversation_scroll = app.conversation_scroll.min(max_scroll);
 
     let paragraph = Paragraph::new(lines)
-        .block(block)
+        .block(body_block)
         .wrap(Wrap { trim: false })
         .scroll((app.conversation_scroll as u16, 0));
 
-    frame.render_widget(paragraph, area);
+    frame.render_widget(paragraph, body_area);
 }
 
 fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Theme) {

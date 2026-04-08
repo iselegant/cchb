@@ -51,7 +51,7 @@ impl Theme {
                 .add_modifier(Modifier::BOLD),
             session_normal: Style::default(),
             session_project: Style::default().fg(Color::Cyan),
-            session_date: Style::default().fg(Color::DarkGray),
+            session_date: Style::default().fg(Color::Yellow),
             session_branch: Style::default().fg(Color::Green),
             session_preview: Style::default().fg(Color::Gray),
             user_label: Style::default()
