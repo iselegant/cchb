@@ -14,7 +14,7 @@ use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 fn get_claude_dir() -> Result<PathBuf> {
@@ -46,9 +46,7 @@ fn restore_terminal() {
 
 /// Load conversation for the currently focused session if not already loaded.
 fn maybe_load_focused_conversation(app: &mut AppState) {
-    let current_session_id = app
-        .selected_session()
-        .map(|s| s.session_id.clone());
+    let current_session_id = app.selected_session().map(|s| s.session_id.clone());
 
     if current_session_id == app.loaded_session_id {
         return; // already loaded
@@ -74,7 +72,7 @@ fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut AppState,
     theme: &Theme,
-    claude_dir: &PathBuf,
+    claude_dir: &Path,
 ) -> Result<()> {
     // Load initial conversation
     maybe_load_focused_conversation(app);
@@ -84,34 +82,33 @@ fn run_app(
             ui::render(frame, app, theme);
         })?;
 
-        if crossterm::event::poll(Duration::from_millis(250))? {
-            if let Event::Key(key) = crossterm::event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+        if crossterm::event::poll(Duration::from_millis(250))?
+            && let Event::Key(key) = crossterm::event::read()?
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            // Handle reload (R key in normal mode)
+            if app.mode == app::AppMode::Normal && key.code == crossterm::event::KeyCode::Char('R')
+            {
+                if let Ok(sessions) = session::discover_sessions(claude_dir) {
+                    let indices: Vec<usize> = (0..sessions.len()).collect();
+                    app.sessions = sessions;
+                    app.filtered_indices = indices;
+                    app.selected_index = 0;
+                    app.loaded_session_id = None;
                 }
+                continue;
+            }
 
-                // Handle reload (R key in normal mode)
-                if app.mode == app::AppMode::Normal
-                    && key.code == crossterm::event::KeyCode::Char('R')
-                {
-                    if let Ok(sessions) = session::discover_sessions(claude_dir) {
-                        let indices: Vec<usize> = (0..sessions.len()).collect();
-                        app.sessions = sessions;
-                        app.filtered_indices = indices;
-                        app.selected_index = 0;
-                        app.loaded_session_id = None;
-                    }
-                    continue;
-                }
+            event::handle_key(app, key)?;
 
-                event::handle_key(app, key)?;
+            // Auto-load conversation when focus changes
+            maybe_load_focused_conversation(app);
 
-                // Auto-load conversation when focus changes
-                maybe_load_focused_conversation(app);
-
-                if app.should_quit {
-                    break;
-                }
+            if app.should_quit {
+                break;
             }
         }
     }

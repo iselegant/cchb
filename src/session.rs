@@ -234,13 +234,12 @@ pub fn discover_sessions(claude_dir: &Path) -> Result<Vec<SessionIndex>> {
 
         // Try sessions-index.json fast path
         let index_path = path.join("sessions-index.json");
-        if index_path.exists() {
-            if let Ok(index_sessions) =
+        if index_path.exists()
+            && let Ok(index_sessions) =
                 load_sessions_from_index(&index_path, &project_path, &project_display)
-            {
-                sessions.extend(index_sessions);
-                continue;
-            }
+        {
+            sessions.extend(index_sessions);
+            continue;
         }
 
         // Fallback: scan JSONL files
@@ -295,6 +294,11 @@ fn load_sessions_from_index(
             .project_path
             .unwrap_or_else(|| project_path.to_string());
 
+        let message_count = entry.message_count.unwrap_or(0);
+        if message_count == 0 {
+            continue;
+        }
+
         sessions.push(SessionIndex {
             session_id,
             project_path: effective_project_path,
@@ -304,7 +308,7 @@ fn load_sessions_from_index(
             created,
             modified,
             git_branch: entry.git_branch,
-            message_count: entry.message_count.unwrap_or(0),
+            message_count,
             file_path,
         });
     }
@@ -354,22 +358,20 @@ fn load_sessions_from_jsonl_scan(
                     message_count += 1;
                 }
 
-                if msg_type == Some("user") && first_prompt.is_empty() {
-                    if let Some(msg) = raw.get("message") {
-                        if let Some(content) = msg.get("content") {
-                            if let Some(s) = content.as_str() {
-                                first_prompt = s.chars().take(200).collect();
-                            } else if let Some(arr) = content.as_array() {
-                                for block in arr {
-                                    if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                                        if let Some(text) =
-                                            block.get("text").and_then(|v| v.as_str())
-                                        {
-                                            first_prompt = text.chars().take(200).collect();
-                                            break;
-                                        }
-                                    }
-                                }
+                if msg_type == Some("user")
+                    && first_prompt.is_empty()
+                    && let Some(msg) = raw.get("message")
+                    && let Some(content) = msg.get("content")
+                {
+                    if let Some(s) = content.as_str() {
+                        first_prompt = s.chars().take(200).collect();
+                    } else if let Some(arr) = content.as_array() {
+                        for block in arr {
+                            if block.get("type").and_then(|v| v.as_str()) == Some("text")
+                                && let Some(text) = block.get("text").and_then(|v| v.as_str())
+                            {
+                                first_prompt = text.chars().take(200).collect();
+                                break;
                             }
                         }
                     }
@@ -385,16 +387,16 @@ fn load_sessions_from_jsonl_scan(
                     }
                 }
 
-                if git_branch.is_none() {
-                    if let Some(branch) = raw.get("gitBranch").and_then(|v| v.as_str()) {
-                        git_branch = Some(branch.to_string());
-                    }
+                if git_branch.is_none()
+                    && let Some(branch) = raw.get("gitBranch").and_then(|v| v.as_str())
+                {
+                    git_branch = Some(branch.to_string());
                 }
 
-                if cwd.is_none() {
-                    if let Some(c) = raw.get("cwd").and_then(|v| v.as_str()) {
-                        cwd = Some(c.to_string());
-                    }
+                if cwd.is_none()
+                    && let Some(c) = raw.get("cwd").and_then(|v| v.as_str())
+                {
+                    cwd = Some(c.to_string());
                 }
             }
         }
@@ -403,6 +405,10 @@ fn load_sessions_from_jsonl_scan(
         let modified = last_timestamp.unwrap_or(created);
 
         let effective_project_path = cwd.unwrap_or_else(|| project_path.to_string());
+
+        if message_count == 0 {
+            continue;
+        }
 
         sessions.push(SessionIndex {
             session_id,
@@ -773,6 +779,87 @@ mod tests {
     }
 
     #[test]
+    fn test_discover_sessions_excludes_empty_sessions_from_index() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-proj");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "has-messages",
+                    "fullPath": project_dir.join("has-messages.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Hello",
+                    "messageCount": 3,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T12:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "no-messages",
+                    "fullPath": project_dir.join("no-messages.jsonl").to_str().unwrap(),
+                    "firstPrompt": "",
+                    "messageCount": 0,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "null-messages",
+                    "fullPath": project_dir.join("null-messages.jsonl").to_str().unwrap(),
+                    "firstPrompt": "",
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "has-messages");
+    }
+
+    #[test]
+    fn test_discover_sessions_excludes_empty_sessions_from_jsonl_scan() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir.join("projects").join("-Users-bar-code-app");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Session with messages
+        let jsonl_with_messages = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"message":{"role":"user","content":"Hello"},"timestamp":"2026-04-07T09:00:00Z"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}]},"timestamp":"2026-04-07T09:01:00Z"}"#;
+        fs::write(
+            project_dir.join("sess-with-msgs.jsonl"),
+            jsonl_with_messages,
+        )
+        .unwrap();
+
+        // Session without messages (only system/snapshot lines)
+        let jsonl_no_messages = r#"{"type":"system","uuid":"s1","message":{"role":"system","content":"System init"}}
+{"type":"file-history-snapshot","messageId":"snap1","snapshot":{}}"#;
+        fs::write(project_dir.join("sess-no-msgs.jsonl"), jsonl_no_messages).unwrap();
+
+        // Empty session file
+        fs::write(project_dir.join("sess-empty.jsonl"), "").unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "sess-with-msgs");
+    }
+
+    #[test]
     fn test_discover_sessions_no_projects_dir() {
         let dir = TempDir::new().unwrap();
         let sessions = discover_sessions(dir.path()).unwrap();
@@ -793,6 +880,7 @@ mod tests {
                     "sessionId": "main-sess",
                     "fullPath": project_dir.join("main-sess.jsonl").to_str().unwrap(),
                     "firstPrompt": "Main session",
+                    "messageCount": 5,
                     "created": "2026-04-08T10:00:00Z",
                     "modified": "2026-04-08T12:00:00Z",
                     "isSidechain": false
@@ -801,6 +889,7 @@ mod tests {
                     "sessionId": "side-sess",
                     "fullPath": project_dir.join("side-sess.jsonl").to_str().unwrap(),
                     "firstPrompt": "Sidechain",
+                    "messageCount": 3,
                     "created": "2026-04-08T10:00:00Z",
                     "modified": "2026-04-08T12:00:00Z",
                     "isSidechain": true

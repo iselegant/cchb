@@ -72,8 +72,7 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
             }
 
             let date_str = session.modified.format("%Y-%m-%d %H:%M").to_string();
-            let second_line =
-                Line::from(vec![Span::styled(date_str, theme.session_date)]);
+            let second_line = Line::from(vec![Span::styled(date_str, theme.session_date)]);
 
             let preview: String = if session.first_prompt.is_empty() {
                 "(no prompt)".to_string()
