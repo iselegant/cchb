@@ -1,0 +1,24 @@
+[package]
+name = "cchist"
+version = "0.1.0"
+edition = "2024"
+description = "A TUI tool for browsing and restoring past Claude Code session history"
+license = "Apache-2.0"
+
+[dependencies]
+ratatui = "0.30"
+crossterm = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+directories = "5"
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
