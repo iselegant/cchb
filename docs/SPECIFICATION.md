@@ -210,7 +210,10 @@ Color scheme designed for readability:
 
 ### NFR-2: Performance
 
-- Session list uses sessions-index.json for fast loading when available
+- Session discovery merges `sessions-index.json` (fast path) with JSONL file scanning
+  - Index entries are loaded first and take priority (pre-parsed metadata)
+  - JSONL scan always runs to catch sessions not in the index (deduplication by session ID)
+  - See ADR-0002 for rationale
 - Conversation content is lazy-loaded on selection (not parsed at startup)
 - LRU cache holds the last 3-5 session conversations in memory
 
