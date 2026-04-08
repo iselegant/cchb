@@ -70,15 +70,15 @@ pub fn date_filter(
         .enumerate()
         .filter(|(_, session)| {
             let session_date = session.modified.date_naive();
-            if let Some(from_date) = from {
-                if session_date < from_date {
-                    return false;
-                }
+            if let Some(from_date) = from
+                && session_date < from_date
+            {
+                return false;
             }
-            if let Some(to_date) = to {
-                if session_date > to_date {
-                    return false;
-                }
+            if let Some(to_date) = to
+                && session_date > to_date
+            {
+                return false;
             }
             true
         })

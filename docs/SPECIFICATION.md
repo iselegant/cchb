@@ -220,6 +220,7 @@ Color scheme designed for readability:
 ### NFR-4: Robustness
 
 - Empty session files: skip silently
+- Sessions with no conversation messages (message_count == 0): excluded from listing
 - Malformed JSONL lines: skip without crashing
 - Very long messages: truncate in list view, wrap in conversation view
 - Unicode/CJK text: render correctly
