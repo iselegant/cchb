@@ -1,0 +1,11 @@
+---
+version: 3
+
+files:
+  - pattern: .github/workflows/*.yml
+  - pattern: .github/workflows/*.yaml
+
+ignore_actions:
+  # rust-toolchain uses branch refs (stable, nightly) by design
+  - name: dtolnay/rust-toolchain
+    ref: ".*"
