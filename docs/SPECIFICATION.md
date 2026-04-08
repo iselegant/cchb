@@ -216,7 +216,9 @@ Color scheme designed for readability:
 | Branch name | Green |
 | Message preview | Gray/Dim |
 | User label "You:" | Bold Green |
+| User message border | Green ("│" left border with "└─" terminator) |
 | Assistant label "Claude:" | Bold Magenta |
+| Assistant message border | Magenta ("│" left border with "└─" terminator) |
 | Selected row | Reverse/Highlight |
 | Search input | Yellow |
 | Active panel border | Bright |
@@ -270,11 +272,13 @@ Color scheme designed for readability:
 ├──────────────────┬──────────────────────────────┤
 │ Sessions (35%)   │ Conversation (65%)           │
 │                  │                              │
-│ > project-a      │ You:                         │
-│   (main)         │   Run terraform plan         │
-│   2026-04-08     │                              │
-│   "terraform..." │ Claude:                      │
-│                  │   Here are the results...    │
+│ > project-a      │ │ You:                       │
+│   (main)         │ │   Run terraform plan       │
+│   2026-04-08     │ └─                           │
+│   "terraform..." │                              │
+│                  │ │ Claude:                     │
+│   project-b      │ │   Here are the results...  │
+│                  │ └─                           │
 │   project-b      │                              │
 │   (feature/x)    │                              │
 │   2026-04-07     │                              │

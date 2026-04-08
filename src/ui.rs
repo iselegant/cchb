@@ -124,32 +124,55 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &AppState, theme
         return;
     }
 
-    // Available width for markdown rendering: panel inner width minus 2-char indent
-    let inner_width = area.width.saturating_sub(2) as usize; // border
-    let md_width = inner_width.saturating_sub(2); // 2-space indent
+    // Available width for markdown rendering:
+    // panel inner width minus border prefix ("│ " = 2 chars) and content indent (2 chars)
+    let inner_width = area.width.saturating_sub(2) as usize; // panel border
+    let border_prefix_width = 2; // "│ "
+    let content_indent_width = 2; // "  "
+    let md_width = inner_width
+        .saturating_sub(border_prefix_width)
+        .saturating_sub(content_indent_width);
 
     let mut lines: Vec<Line> = Vec::new();
     for msg in &app.conversation {
         if msg.is_sidechain {
             continue;
         }
-        let (label, label_style, base_style) = match msg.role.as_str() {
-            "user" => ("You:", theme.user_label, theme.user_message),
-            "assistant" => ("Claude:", theme.assistant_label, theme.assistant_message),
+        let (label, label_style, base_style, border_style) = match msg.role.as_str() {
+            "user" => (
+                "You:",
+                theme.user_label,
+                theme.user_message,
+                theme.user_border,
+            ),
+            "assistant" => (
+                "Claude:",
+                theme.assistant_label,
+                theme.assistant_message,
+                theme.assistant_border,
+            ),
             _ => continue,
         };
 
-        lines.push(Line::from(Span::styled(label, label_style)));
+        // Label line with border prefix: "│ You:" or "│ Claude:"
+        lines.push(Line::from(vec![
+            Span::styled("│ ", border_style),
+            Span::styled(label, label_style),
+        ]));
+        // Content lines with border prefix: "│   content"
         for block_content in &msg.content_blocks {
             if let ContentBlock::Text(text) = block_content {
                 let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
                 for md_line in md_lines {
-                    let mut spans = vec![Span::raw("  ")];
+                    let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
                     spans.extend(md_line.spans);
                     lines.push(Line::from(spans));
                 }
             }
         }
+        // End of message: "└─"
+        lines.push(Line::from(Span::styled("└─", border_style)));
+        // Blank separator line
         lines.push(Line::from(""));
     }
 

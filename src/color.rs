@@ -27,8 +27,10 @@ pub struct Theme {
     pub session_preview: Style,
     pub user_label: Style,
     pub user_message: Style,
+    pub user_border: Style,
     pub assistant_label: Style,
     pub assistant_message: Style,
+    pub assistant_border: Style,
     pub search_input: Style,
     pub help_title: Style,
     pub help_key: Style,
@@ -55,10 +57,12 @@ impl Theme {
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
             user_message: Style::default().fg(Color::White),
+            user_border: Style::default().fg(Color::Green),
             assistant_label: Style::default()
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
             assistant_message: Style::default().fg(Color::White),
+            assistant_border: Style::default().fg(Color::Magenta),
             search_input: Style::default().fg(Color::Yellow),
             help_title: Style::default()
                 .fg(Color::Cyan)
