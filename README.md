@@ -1,1 +1,103 @@
-# cchb
+# cchb - Claude Code History Browser
+
+A fast TUI tool for browsing and resuming past [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions.
+
+Inspired by [ccresume](https://github.com/sasazame/ccresume).
+
+## Features
+
+- **Session list** — Browse all Claude Code sessions across projects, sorted by last modified date
+- **Conversation viewer** — Preview conversations with Markdown rendering (headings, code blocks, tables, lists, links)
+- **Fuzzy search** — Search through conversation content with real-time filtering and in-conversation match highlighting
+- **Date range filter** — Filter sessions by date with arrow-key date stepping
+- **Session resume** — Resume any session directly with `claude --resume`
+- **Vim keybindings** — Navigate with `j`/`k`, `g`/`G`, `Ctrl+d`/`Ctrl+u`, and more
+
+## Installation
+
+Download a pre-built binary from [GitHub Releases](https://github.com/iselegant/cchb/releases) and place it in your `$PATH`.
+
+### Supported platforms
+
+| Platform | Binary |
+|----------|--------|
+| macOS (Apple Silicon) | `cchb-aarch64-apple-darwin` |
+| macOS (Intel) | `cchb-x86_64-apple-darwin` |
+| Linux (x86_64) | `cchb-x86_64-unknown-linux-gnu` |
+
+### Build from source
+
+```sh
+cargo build --release
+cp target/release/cchb /usr/local/bin/
+```
+
+Requires Rust 2024 edition (1.85+).
+
+## Usage
+
+```sh
+cchb
+```
+
+### Keybindings
+
+#### Session list (Normal mode)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `g` / `G` | Jump to top / bottom |
+| `Right` / `Left` | Next / previous page |
+| `Ctrl+d` / `Ctrl+u` | Half-page down / up |
+| `Enter` / `l` | Open session |
+| `f` | Fuzzy search |
+| `d` | Date range filter |
+| `c` | Clear all filters |
+| `r` | Resume session in Claude Code |
+| `R` | Reload session list |
+| `Tab` | Switch panel focus |
+| `h` / `?` | Help |
+| `Esc` / `q` | Quit |
+
+#### Conversation viewer (Viewing mode)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Scroll down / up |
+| `g` / `G` | Scroll to top / bottom |
+| `Ctrl+d` / `Ctrl+u` | Half-page down / up |
+| `[` / `]` | Previous / next session |
+| `n` / `N` | Next / previous search match |
+| `c` | Clear all filters |
+| `f` | Search |
+| `d` | Date range filter |
+| `r` | Resume session |
+| `Tab` | Switch panel focus |
+| `h` / `?` | Help |
+| `Esc` / `q` | Back to list |
+
+## UI Layout
+
+```
+┌─ cchb - Claude Code History Browser ────────────┐
+├──────────────────┬───────────────────────────────┤
+│ Sessions (35%)   │ Conversation (65%)            │
+│                  │                               │
+│ > project-a      │ │ You:                        │
+│   (main)         │ │   Run terraform plan        │
+│   2026-04-08     │ └─                            │
+│   "terraform..." │                               │
+│                  │ │ Claude:                      │
+│   project-b      │ │   Here are the results...   │
+│   (feature/x)    │ └─                            │
+│   2026-04-07     │                               │
+│   "API design.." │                               │
+├──────────────────┴───────────────────────────────┤
+│ 42 sessions        f:search d:date h:help q:quit │
+└──────────────────────────────────────────────────┘
+```
+
+## License
+
+Apache-2.0
