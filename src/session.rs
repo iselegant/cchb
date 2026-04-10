@@ -569,19 +569,15 @@ pub fn load_conversation(path: &Path) -> Result<Vec<ConversationMessage>> {
 /// Filter conversation messages to only those suitable for display.
 /// Returns user text and assistant text blocks, excluding sidechains.
 /// For assistant messages, only keeps Text content blocks.
-pub fn display_messages(messages: &[ConversationMessage]) -> Vec<&ConversationMessage> {
+pub fn display_messages(messages: Vec<ConversationMessage>) -> Vec<ConversationMessage> {
     messages
-        .iter()
+        .into_iter()
         .filter(|msg| {
             if msg.is_sidechain {
                 return false;
             }
             match msg.role.as_str() {
-                "user" => msg
-                    .content_blocks
-                    .iter()
-                    .any(|b| matches!(b, ContentBlock::Text(_))),
-                "assistant" => msg
+                "user" | "assistant" => msg
                     .content_blocks
                     .iter()
                     .any(|b| matches!(b, ContentBlock::Text(_))),
@@ -769,7 +765,7 @@ mod tests {
             },
         ];
 
-        let displayed = display_messages(&messages);
+        let displayed = display_messages(messages);
         assert_eq!(displayed.len(), 2);
         assert_eq!(displayed[0].uuid, "1");
         assert_eq!(displayed[1].uuid, "2");
@@ -786,7 +782,7 @@ mod tests {
             is_sidechain: false,
         }];
 
-        let displayed = display_messages(&messages);
+        let displayed = display_messages(messages);
         assert!(displayed.is_empty());
     }
 

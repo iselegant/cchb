@@ -96,8 +96,7 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 let path = session.file_path.clone();
                 app.enter_viewing();
                 if let Ok(messages) = session::load_conversation(&path) {
-                    let display = session::display_messages(&messages);
-                    app.conversation = display.into_iter().cloned().collect();
+                    app.conversation = session::display_messages(messages);
                 }
             }
         }
@@ -376,8 +375,7 @@ fn enter_viewing_with_search_jump(app: &mut AppState, direction: crate::app::Sea
         let path = app.selected_session().unwrap().file_path.clone();
         app.enter_viewing();
         if let Ok(messages) = session::load_conversation(&path) {
-            let display = session::display_messages(&messages);
-            app.conversation = display.into_iter().cloned().collect();
+            app.conversation = session::display_messages(messages);
         }
         app.pending_search_jump = Some(direction);
     }
@@ -387,8 +385,7 @@ fn reload_conversation(app: &mut AppState) {
     if let Some(session) = app.selected_session() {
         let path = session.file_path.clone();
         if let Ok(messages) = session::load_conversation(&path) {
-            let display = session::display_messages(&messages);
-            app.conversation = display.into_iter().cloned().collect();
+            app.conversation = session::display_messages(messages);
         }
     }
 }
