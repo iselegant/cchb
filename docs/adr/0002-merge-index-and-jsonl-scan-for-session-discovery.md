@@ -13,7 +13,7 @@ This design assumes `sessions-index.json` is always complete and up-to-date. How
 | Metric | Value |
 |--------|-------|
 | Total unique sessions in `history.jsonl` | 718 |
-| Sessions discovered by cchist | 116 |
+| Sessions discovered by cchb | 116 |
 | March+ sessions with JSONL in indexed projects (invisible) | 60 |
 | March+ sessions with JSONL in non-indexed projects (visible) | 113 |
 

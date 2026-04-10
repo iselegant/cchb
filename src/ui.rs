@@ -31,7 +31,7 @@ pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
 
 fn render_title_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
     let title = Paragraph::new(Line::from(vec![Span::styled(
-        " cchist - Claude Code History Browser",
+        " cchb - Claude Code History Browser",
         theme.title,
     )]));
     frame.render_widget(title, area);

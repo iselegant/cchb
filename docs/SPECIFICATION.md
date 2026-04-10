@@ -1,4 +1,4 @@
-# cchist - Claude Code Session History Browser
+# cchb - Claude Code Session History Browser
 
 ## Overview
 
@@ -205,7 +205,7 @@ Each JSONL file consists of one message per line:
 ### FR-8: Session Restore (r key)
 
 - Press `r` in Normal or Viewing mode to restore the currently selected session
-- Exits cchist TUI, then launches `claude --resume <session-id>` via `exec`
+- Exits cchb TUI, then launches `claude --resume <session-id>` via `exec`
 - Terminal is properly restored before launching Claude
 - If no session is selected, the key press is ignored
 
@@ -274,7 +274,7 @@ Color scheme designed for readability:
 ## UI Layout
 
 ```
-┌─ cchist - Claude Code History ──────────────────┐
+┌─ cchb - Claude Code History ──────────────────┐
 ├──────────────────┬──────────────────────────────┤
 │ Sessions (35%)   │ Conversation (65%)           │
 │                  │                              │
@@ -325,7 +325,7 @@ Verification after each phase:
 ## Implementation Phases
 
 ### Phase 1: Project Initialization
-- `cargo init --name cchist`
+- `cargo init --name cchb`
 - Add dependencies to Cargo.toml
 - Create module skeleton files
 
@@ -374,7 +374,7 @@ Verification after each phase:
 The tool is distributed as a pre-built binary, not via `cargo install` from source.
 
 - Build optimized release binary with `cargo build --release`
-- Binary is output to `target/release/cchist`
+- Binary is output to `target/release/cchb`
 - Users install by placing the binary in their `$PATH` (e.g., `/usr/local/bin/`)
 - GitHub Releases are used for distribution with pre-built binaries for each platform
 
