@@ -6,21 +6,69 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-    ScrollbarState,
-};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
-/// Compute scrollbar content_length and position for the session list.
-/// Uses the same pattern as the conversation view: max_scroll + 1 as content_length
-/// and the list offset as position, to keep the thumb size stable across scroll positions.
-fn session_scrollbar_params(
-    total_items: usize,
-    items_per_page: usize,
-    offset: usize,
+/// Compute scrollbar thumb geometry with a fixed thumb size that does not
+/// fluctuate across scroll positions.
+///
+/// Returns `(thumb_start, thumb_size)` in track cells.
+///
+/// - `track_length`: number of cells available for the scrollbar track
+/// - `total_content`: total number of items or lines
+/// - `viewport`: number of visible items or lines
+/// - `position`: current scroll offset (`0..=total_content - viewport`)
+fn scrollbar_geometry(
+    track_length: usize,
+    total_content: usize,
+    viewport: usize,
+    position: usize,
 ) -> (usize, usize) {
-    let max_scroll = total_items.saturating_sub(items_per_page);
-    (max_scroll + 1, offset)
+    if track_length == 0 {
+        return (0, 0);
+    }
+    if total_content <= viewport {
+        return (0, track_length);
+    }
+    let max_scroll = total_content - viewport;
+    let thumb_size = (viewport * track_length / total_content).max(1);
+    let max_thumb_start = track_length - thumb_size;
+    let thumb_start = if max_scroll == 0 {
+        0
+    } else {
+        (position * max_thumb_start + max_scroll / 2) / max_scroll
+    };
+    (thumb_start.min(max_thumb_start), thumb_size)
+}
+
+/// Render a scrollbar on the right edge of `area` with a fixed-size thumb.
+/// Uses `scrollbar_geometry` to avoid the ±1 cell thumb drift caused by
+/// ratatui's independent rounding of thumb start and end positions.
+fn render_fixed_scrollbar(
+    frame: &mut Frame,
+    area: Rect,
+    total_content: usize,
+    viewport: usize,
+    position: usize,
+) {
+    let track_length = area.height as usize;
+    let (thumb_start, thumb_size) =
+        scrollbar_geometry(track_length, total_content, viewport, position);
+
+    let x = area.right().saturating_sub(1);
+    let track_symbol = "║";
+    let thumb_symbol = "█";
+
+    for i in 0..track_length {
+        let y = area.y + i as u16;
+        let (symbol, style) = if i >= thumb_start && i < thumb_start + thumb_size {
+            (thumb_symbol, Style::default())
+        } else {
+            (track_symbol, Style::default().fg(Color::DarkGray))
+        };
+        frame.buffer_mut()[(x, y)]
+            .set_symbol(symbol)
+            .set_style(style);
+    }
 }
 
 pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
@@ -191,13 +239,13 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
     // Render scrollbar
     let total_items = app.filtered_indices.len();
     if total_items > app.items_per_page {
-        let (content_length, position) =
-            session_scrollbar_params(total_items, app.items_per_page, app.list_state.offset());
-        let mut scrollbar_state = ScrollbarState::new(content_length)
-            .position(position)
-            .viewport_content_length(app.items_per_page);
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+        render_fixed_scrollbar(
+            frame,
+            area,
+            total_items,
+            app.items_per_page,
+            app.list_state.offset(),
+        );
     }
 }
 
@@ -416,14 +464,14 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     frame.render_widget(paragraph, body_area);
 
     // Render scrollbar on body_area so it overlaps the right border.
-    // Scrollbar reaches bottom when position == content_length - 1,
-    // so we use max_scroll + 1 as content_length.
     if total_lines > visible_height {
-        let mut scrollbar_state = ScrollbarState::new(max_scroll + 1)
-            .position(app.conversation_scroll)
-            .viewport_content_length(visible_height);
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        frame.render_stateful_widget(scrollbar, body_area, &mut scrollbar_state);
+        render_fixed_scrollbar(
+            frame,
+            body_area,
+            total_lines,
+            visible_height,
+            app.conversation_scroll,
+        );
     }
 }
 
@@ -818,42 +866,71 @@ mod tests {
     }
 
     #[test]
-    fn test_session_scrollbar_params_basic() {
-        // 20 items, 5 visible → max_scroll = 15, content_length = 16
-        let (content_length, position) = session_scrollbar_params(20, 5, 0);
-        assert_eq!(content_length, 16);
-        assert_eq!(position, 0);
+    fn test_scrollbar_geometry_thumb_size_constant_across_positions() {
+        // track=18, total=30, viewport=4 → thumb must be the same size at every position
+        let max_scroll = 30 - 4;
+        let mut sizes = Vec::new();
+        for pos in 0..=max_scroll {
+            let (_, thumb_size) = scrollbar_geometry(18, 30, 4, pos);
+            sizes.push(thumb_size);
+        }
+        let first = sizes[0];
+        assert!(
+            sizes.iter().all(|&s| s == first),
+            "Thumb size must be constant, got: {:?}",
+            sizes
+        );
     }
 
     #[test]
-    fn test_session_scrollbar_params_scrolled() {
-        // offset = 10 → position = 10
-        let (content_length, position) = session_scrollbar_params(20, 5, 10);
-        assert_eq!(content_length, 16);
-        assert_eq!(position, 10);
+    fn test_scrollbar_geometry_thumb_at_start_and_end() {
+        // thumb_start == 0 at position 0, thumb reaches end at max scroll
+        let (start, size) = scrollbar_geometry(18, 30, 4, 0);
+        assert_eq!(start, 0);
+        let max_scroll = 30 - 4;
+        let (start_end, size_end) = scrollbar_geometry(18, 30, 4, max_scroll);
+        assert_eq!(start_end + size_end, 18, "Thumb must reach the bottom");
+        assert_eq!(size, size_end);
     }
 
     #[test]
-    fn test_session_scrollbar_params_at_max_scroll() {
-        // offset = 15 (max) → position = 15, content_length = 16
-        let (content_length, position) = session_scrollbar_params(20, 5, 15);
-        assert_eq!(content_length, 16);
-        assert_eq!(position, 15);
+    fn test_scrollbar_geometry_minimum_thumb_size() {
+        // Very large content → thumb should be at least 1
+        let (_, size) = scrollbar_geometry(10, 1000, 1, 0);
+        assert_eq!(size, 1);
     }
 
     #[test]
-    fn test_session_scrollbar_params_items_equal_page() {
-        // total == items_per_page → max_scroll = 0, content_length = 1
-        let (content_length, position) = session_scrollbar_params(5, 5, 0);
-        assert_eq!(content_length, 1);
-        assert_eq!(position, 0);
+    fn test_scrollbar_geometry_content_fits_viewport() {
+        // total <= viewport → thumb fills entire track
+        let (start, size) = scrollbar_geometry(18, 4, 4, 0);
+        assert_eq!(start, 0);
+        assert_eq!(size, 18);
     }
 
     #[test]
-    fn test_session_scrollbar_params_fewer_items_than_page() {
-        // total < items_per_page → max_scroll = 0, content_length = 1
-        let (content_length, position) = session_scrollbar_params(3, 5, 0);
-        assert_eq!(content_length, 1);
-        assert_eq!(position, 0);
+    fn test_scrollbar_geometry_zero_track() {
+        let (start, size) = scrollbar_geometry(0, 30, 4, 0);
+        assert_eq!(start, 0);
+        assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn test_scrollbar_geometry_conversation_view_scenario() {
+        // Simulate conversation: track=40, total_lines=200, visible=40
+        let max_scroll = 200 - 40;
+        let mut sizes = Vec::new();
+        for pos in 0..=max_scroll {
+            let (_, thumb_size) = scrollbar_geometry(40, 200, 40, pos);
+            sizes.push(thumb_size);
+        }
+        let first = sizes[0];
+        assert!(
+            sizes.iter().all(|&s| s == first),
+            "Thumb size must be constant, got varying sizes"
+        );
+        // thumb at max scroll reaches bottom
+        let (start, size) = scrollbar_geometry(40, 200, 40, max_scroll);
+        assert_eq!(start + size, 40);
     }
 }
