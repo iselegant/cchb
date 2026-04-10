@@ -10,7 +10,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     let outer = Layout::vertical([
-        Constraint::Length(1), // title bar
+        Constraint::Length(3), // title bar (ASCII art)
         Constraint::Min(3),    // main content
         Constraint::Length(1), // status bar
     ])
@@ -29,11 +29,41 @@ pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     }
 }
 
-fn render_title_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
-    let title = Paragraph::new(Line::from(vec![Span::styled(
-        " cchb - Claude Code History Browser",
-        theme.title,
-    )]));
+fn render_title_bar(frame: &mut Frame, area: Rect, _theme: &Theme) {
+    let c1 = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let c2 = Style::default()
+        .fg(Color::Magenta)
+        .add_modifier(Modifier::BOLD);
+    let c3 = Style::default()
+        .fg(Color::Green)
+        .add_modifier(Modifier::BOLD);
+    let c4 = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(" ▄▀▀ ", c1),
+            Span::styled("▄▀▀ ", c2),
+            Span::styled("█ █ ", c3),
+            Span::styled("█▀▄", c4),
+        ]),
+        Line::from(vec![
+            Span::styled(" █   ", c1),
+            Span::styled("█   ", c2),
+            Span::styled("█▀█ ", c3),
+            Span::styled("█▀█", c4),
+        ]),
+        Line::from(vec![
+            Span::styled(" ▀▀▀ ", c1),
+            Span::styled("▀▀▀ ", c2),
+            Span::styled("▀ ▀ ", c3),
+            Span::styled("▀▀ ", c4),
+        ]),
+    ];
+
+    let title = Paragraph::new(lines);
     frame.render_widget(title, area);
 }
 
