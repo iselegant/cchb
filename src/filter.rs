@@ -49,6 +49,7 @@ pub fn fuzzy_filter(
 
 /// Filter sessions by date range (inclusive).
 /// Compares against the session's modified date.
+#[cfg(test)]
 pub fn date_filter(
     sessions: &[SessionIndex],
     from: Option<NaiveDate>,
@@ -78,8 +79,7 @@ pub fn date_filter(
         .collect()
 }
 
-/// Apply both fuzzy search and date range filters, returning matching indices.
-/// The result is the intersection of both filters.
+/// Apply both fuzzy search and date range filters in a single pass.
 pub fn apply_filters(
     sessions: &[SessionIndex],
     query: &str,
@@ -87,14 +87,63 @@ pub fn apply_filters(
     to: Option<NaiveDate>,
     content_cache: &[String],
 ) -> Vec<usize> {
-    let fuzzy_results = fuzzy_filter(sessions, query, content_cache);
-    let date_results = date_filter(sessions, from, to);
+    let no_query = query.is_empty();
+    let no_date = from.is_none() && to.is_none();
 
-    // Intersect both results
-    let date_set: std::collections::HashSet<usize> = date_results.into_iter().collect();
-    fuzzy_results
-        .into_iter()
-        .filter(|i| date_set.contains(i))
+    if no_query && no_date {
+        return (0..sessions.len()).collect();
+    }
+
+    let query_lower = query.to_lowercase();
+
+    sessions
+        .iter()
+        .enumerate()
+        .filter(|(i, session)| {
+            // Date filter
+            if !no_date {
+                let session_date = session.modified.date_naive();
+                if let Some(from_date) = from
+                    && session_date < from_date
+                {
+                    return false;
+                }
+                if let Some(to_date) = to
+                    && session_date > to_date
+                {
+                    return false;
+                }
+            }
+
+            // Fuzzy filter
+            if !no_query {
+                if let Some(cached) = content_cache.get(*i)
+                    && !cached.is_empty()
+                {
+                    return cached.contains(query_lower.as_str());
+                }
+                return session.first_prompt.to_lowercase().contains(&query_lower)
+                    || session
+                        .project_display
+                        .to_lowercase()
+                        .contains(&query_lower)
+                    || session
+                        .summary
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query_lower)
+                    || session
+                        .git_branch
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query_lower);
+            }
+
+            true
+        })
+        .map(|(i, _)| i)
         .collect()
 }
 
