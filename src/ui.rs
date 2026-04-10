@@ -352,12 +352,19 @@ fn render_search_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) {
         .borders(Borders::ALL)
         .border_style(theme.border_active);
 
-    let input = Paragraph::new(Line::from(vec![
+    let mut spans = vec![
         Span::styled("> ", theme.search_input),
         Span::styled(&app.search_query, theme.search_input),
         Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
-    ]))
-    .block(block);
+    ];
+    if app.search_cache_loading {
+        spans.push(Span::styled(
+            " (loading...)",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    let input = Paragraph::new(Line::from(spans)).block(block);
 
     frame.render_widget(input, area);
 }
