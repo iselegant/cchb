@@ -665,17 +665,23 @@ mod tests {
 
     fn make_sessions(n: usize) -> Vec<SessionIndex> {
         (0..n)
-            .map(|i| SessionIndex {
-                session_id: format!("sess-{i}"),
-                project_path: format!("/test/project-{i}"),
-                project_display: format!("project-{i}"),
-                first_prompt: format!("Prompt {i}"),
-                summary: None,
-                created: Utc::now(),
-                modified: Utc::now(),
-                git_branch: Some("main".into()),
-                message_count: 10,
-                file_path: PathBuf::from(format!("/tmp/sess-{i}.jsonl")),
+            .map(|i| {
+                SessionIndex {
+                    session_id: format!("sess-{i}"),
+                    project_path: format!("/test/project-{i}"),
+                    project_display: format!("project-{i}"),
+                    first_prompt: format!("Prompt {i}"),
+                    summary: None,
+                    created: Utc::now(),
+                    modified: Utc::now(),
+                    git_branch: Some("main".into()),
+                    message_count: 10,
+                    file_path: PathBuf::from(format!("/tmp/sess-{i}.jsonl")),
+                    date_display: String::new(),
+                    branch_display: String::new(),
+                    prompt_preview: String::new(),
+                }
+                .with_display_fields()
             })
             .collect()
     }

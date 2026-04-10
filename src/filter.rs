@@ -180,7 +180,11 @@ mod tests {
             git_branch: branch.map(Into::into),
             message_count: 10,
             file_path: PathBuf::from(format!("/tmp/{id}.jsonl")),
+            date_display: String::new(),
+            branch_display: String::new(),
+            prompt_preview: String::new(),
         }
+        .with_display_fields()
     }
 
     fn sample_sessions() -> Vec<SessionIndex> {
@@ -432,6 +436,9 @@ mod tests {
             git_branch: Some("main".into()),
             message_count: 2,
             file_path,
+            date_display: String::new(),
+            branch_display: String::new(),
+            prompt_preview: String::new(),
         }];
 
         // "実行日" is only in the assistant's response, not in metadata
@@ -472,6 +479,9 @@ mod tests {
             git_branch: None,
             message_count: 1,
             file_path,
+            date_display: String::new(),
+            branch_display: String::new(),
+            prompt_preview: String::new(),
         }];
 
         let cache = vec![session::extract_searchable_text(&sessions[0].file_path)];
@@ -517,6 +527,9 @@ mod tests {
             git_branch: None,
             message_count: 1,
             file_path,
+            date_display: String::new(),
+            branch_display: String::new(),
+            prompt_preview: String::new(),
         }];
 
         // "実行日" should NOT match "実装を行った日のログ" via substring

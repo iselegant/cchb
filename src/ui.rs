@@ -205,20 +205,20 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
                 &session.project_display,
                 theme.session_project,
             )];
-            if let Some(ref branch) = session.git_branch {
+            if !session.branch_display.is_empty() {
                 first_line_spans.push(Span::raw(" "));
-                first_line_spans.push(Span::styled(format!("({branch})"), theme.session_branch));
+                first_line_spans.push(Span::styled(&session.branch_display, theme.session_branch));
             }
 
-            let date_str = session.modified.format("%Y-%m-%d %H:%M").to_string();
-            let second_line = Line::from(vec![Span::styled(date_str, theme.session_date)]);
+            let second_line = Line::from(vec![Span::styled(
+                &session.date_display,
+                theme.session_date,
+            )]);
 
-            let preview: String = if session.first_prompt.is_empty() {
-                "(no prompt)".to_string()
-            } else {
-                session.first_prompt.chars().take(60).collect()
-            };
-            let third_line = Line::from(vec![Span::styled(preview, theme.session_preview)]);
+            let third_line = Line::from(vec![Span::styled(
+                &session.prompt_preview,
+                theme.session_preview,
+            )]);
 
             ListItem::new(vec![
                 Line::from(first_line_spans),
