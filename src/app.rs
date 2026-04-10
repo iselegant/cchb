@@ -392,6 +392,10 @@ impl AppState {
         }
     }
 
+    /// Number of lines to offset from the top when scrolling to a search match,
+    /// so the matched line appears a few lines below the viewport top for readability.
+    const SEARCH_SCROLL_MARGIN: usize = 5;
+
     /// Jump to the next search match line, wrapping around from last to first.
     pub fn jump_to_next_match(&mut self) {
         if self.search_match_positions.is_empty() {
@@ -402,7 +406,9 @@ impl AppState {
             None => 0,
         };
         self.search_match_current = Some(next);
-        self.conversation_scroll = self.search_match_positions[next].0;
+        self.conversation_scroll = self.search_match_positions[next]
+            .0
+            .saturating_sub(Self::SEARCH_SCROLL_MARGIN);
     }
 
     /// Jump to the previous search match occurrence, wrapping around from first to last.
@@ -416,7 +422,9 @@ impl AppState {
             None => self.search_match_positions.len() - 1,
         };
         self.search_match_current = Some(prev);
-        self.conversation_scroll = self.search_match_positions[prev].0;
+        self.conversation_scroll = self.search_match_positions[prev]
+            .0
+            .saturating_sub(Self::SEARCH_SCROLL_MARGIN);
     }
 
     /// Request resuming the currently selected session. Sets the session ID/project path and quits.
@@ -916,11 +924,11 @@ mod tests {
         app.search_match_positions = vec![(10, 0)];
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 10);
+        assert_eq!(app.conversation_scroll, 5); // 10 - 5 margin
         // Wrap around
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 10);
+        assert_eq!(app.conversation_scroll, 5);
     }
 
     #[test]
@@ -929,17 +937,17 @@ mod tests {
         app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 5);
+        assert_eq!(app.conversation_scroll, 0); // 5 - 5 = 0 (saturating)
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(1));
-        assert_eq!(app.conversation_scroll, 15);
+        assert_eq!(app.conversation_scroll, 10); // 15 - 5
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(2));
-        assert_eq!(app.conversation_scroll, 25);
+        assert_eq!(app.conversation_scroll, 20); // 25 - 5
         // Wrap around
         app.jump_to_next_match();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 5);
+        assert_eq!(app.conversation_scroll, 0);
     }
 
     #[test]
@@ -957,17 +965,17 @@ mod tests {
         // First call without current goes to last
         app.jump_to_prev_match();
         assert_eq!(app.search_match_current, Some(2));
-        assert_eq!(app.conversation_scroll, 25);
+        assert_eq!(app.conversation_scroll, 20); // 25 - 5
         app.jump_to_prev_match();
         assert_eq!(app.search_match_current, Some(1));
-        assert_eq!(app.conversation_scroll, 15);
+        assert_eq!(app.conversation_scroll, 10); // 15 - 5
         app.jump_to_prev_match();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 5);
+        assert_eq!(app.conversation_scroll, 0); // 5 - 5 = 0
         // Wrap around
         app.jump_to_prev_match();
         assert_eq!(app.search_match_current, Some(2));
-        assert_eq!(app.conversation_scroll, 25);
+        assert_eq!(app.conversation_scroll, 20);
     }
 
     #[test]
