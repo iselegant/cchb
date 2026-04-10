@@ -404,11 +404,13 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
 
     let hints = match (app.mode == AppMode::Viewing, has_filters) {
         (true, true) => {
-            " Tab:panel  r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
+            " Tab/Enter:panel  r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
         }
-        (true, false) => " Tab:panel  r:resume  f:search  d:date  h:help  Esc/q:back ",
-        (false, true) => " Tab:panel  r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit ",
-        (false, false) => " Tab:panel  r:resume  f:search  d:date  h:help  Esc/q:quit ",
+        (true, false) => " Tab/Enter:panel  r:resume  f:search  d:date  h:help  Esc/q:back ",
+        (false, true) => {
+            " Tab/Enter:panel  r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit "
+        }
+        (false, false) => " Tab/Enter:panel  r:resume  f:search  d:date  h:help  Esc/q:quit ",
     };
 
     let left_len = status_text.len() + search_indicator.len();
@@ -511,7 +513,11 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
         help_line("Ctrl+d / Ctrl+u", "Half page down / up", theme),
         help_line("Enter / l", "Open session", theme),
         help_line("Esc / q", "Back / Quit", theme),
-        help_line("Tab", "Switch panel focus", theme),
+        help_line(
+            "Tab / Enter",
+            "Switch panel focus (Enter: viewing mode only)",
+            theme,
+        ),
         help_line("f", "Fuzzy search sessions", theme),
         help_line("d", "Filter by date range", theme),
         help_line("c", "Clear all filters", theme),
