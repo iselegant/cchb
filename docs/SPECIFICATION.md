@@ -202,7 +202,7 @@ Each JSONL file consists of one message per line:
 | `l` | Viewing | Reload conversation (re-read JSONL file) |
 | `R` (Shift+r) | Normal | Reload session list |
 | `[` / `]` | Viewing | Navigate to previous/next session without returning to list |
-| `n` / `N` | Viewing | Panel-aware: Jump to next/previous search match — in Conversation panel wraps within session; in Session panel navigates across sessions (wraps around session list) |
+| `n` / `N` | Normal/Viewing | Jump to next/previous search match — navigates within session matches first, then crosses to next/previous session when at the boundary. In Normal mode with Session panel, auto-enters Viewing mode. Wraps around session list. |
 
 ### FR-8: Session Restore (r key)
 
