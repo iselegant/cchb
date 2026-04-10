@@ -10,6 +10,11 @@ pub fn handle_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         app.should_quit = true;
         return Ok(());
     }
+    // Hidden easter egg: sparkle the logo
+    if key.code == KeyCode::Char('*') {
+        app.start_logo_sparkle();
+        return Ok(());
+    }
     match app.mode {
         AppMode::Normal => handle_normal_key(app, key)?,
         AppMode::Viewing => handle_viewing_key(app, key)?,
