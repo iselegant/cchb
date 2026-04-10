@@ -4,6 +4,10 @@ A fast TUI tool for browsing and resuming past [Claude Code](https://docs.anthro
 
 Inspired by [ccresume](https://github.com/sasazame/ccresume).
 
+> [!NOTE]
+> This is **not** an official Anthropic product. It is a community-built tool that reads Claude Code's local session data.
+> Claude Code updates may change the internal data format or file layout, which could affect this tool's behavior. If you encounter issues after a Claude Code update, please check for a new release or open an issue.
+
 ## Features
 
 - **Session list** — Browse all Claude Code sessions across projects, sorted by last modified date
