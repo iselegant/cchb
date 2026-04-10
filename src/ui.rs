@@ -42,6 +42,10 @@ fn render_title_bar(frame: &mut Frame, area: Rect, _theme: &Theme) {
     let c4 = Style::default()
         .fg(Color::Yellow)
         .add_modifier(Modifier::BOLD);
+    let dim = Style::default().fg(Color::DarkGray);
+
+    let version = format!("  v{}", env!("CARGO_PKG_VERSION"));
+
     let lines = vec![
         Line::from(vec![
             Span::styled(" ▄▀▀ ", c1),
@@ -60,6 +64,7 @@ fn render_title_bar(frame: &mut Frame, area: Rect, _theme: &Theme) {
             Span::styled("▀▀▀ ", c2),
             Span::styled("▀ ▀ ", c3),
             Span::styled("▀▀ ", c4),
+            Span::styled(&version, dim),
         ]),
     ];
 
