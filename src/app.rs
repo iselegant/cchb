@@ -84,6 +84,9 @@ pub struct AppState {
     pub conversation_lines_cache: Vec<Line<'static>>,
     /// Cache key: (session_id, render_width) — invalidate when either changes.
     pub conversation_cache_key: (Option<String>, u16),
+    /// Cache key for search match positions: (query, conversation_cache_key).
+    /// When this matches the current state, skip recomputing match positions.
+    pub search_match_cache_key: (String, (Option<String>, u16)),
 }
 
 impl AppState {
@@ -123,6 +126,7 @@ impl AppState {
             logo_sparkle_start: None,
             conversation_lines_cache: Vec::new(),
             conversation_cache_key: (None, 0),
+            search_match_cache_key: (String::new(), (None, 0)),
         }
     }
 
@@ -225,6 +229,7 @@ impl AppState {
     pub fn invalidate_conversation_cache(&mut self) {
         self.conversation_lines_cache.clear();
         self.conversation_cache_key = (None, 0);
+        self.search_match_cache_key = (String::new(), (None, 0));
     }
 
     pub fn enter_viewing(&mut self) {
@@ -1504,6 +1509,20 @@ mod tests {
         app.request_reload_conversation();
         assert!(app.conversation_lines_cache.is_empty());
         assert_eq!(app.conversation_cache_key, (None, 0));
+    }
+
+    #[test]
+    fn test_search_match_cache_key_initial_state() {
+        let app = AppState::new(make_sessions(3));
+        assert_eq!(app.search_match_cache_key, (String::new(), (None, 0)));
+    }
+
+    #[test]
+    fn test_invalidate_conversation_cache_resets_match_cache_key() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_match_cache_key = ("test".into(), (Some("sess-0".into()), 80));
+        app.invalidate_conversation_cache();
+        assert_eq!(app.search_match_cache_key, (String::new(), (None, 0)));
     }
 
     #[test]
