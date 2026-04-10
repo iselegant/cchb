@@ -371,10 +371,12 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
         || !app.date_to_input.is_empty();
 
     let hints = match (app.mode == AppMode::Viewing, has_filters) {
-        (true, true) => " r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back ",
-        (true, false) => " r:resume  f:search  d:date  h:help  Esc/q:back ",
-        (false, true) => " r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit ",
-        (false, false) => " r:resume  f:search  d:date  h:help  Esc/q:quit ",
+        (true, true) => {
+            " Tab:panel  r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
+        }
+        (true, false) => " Tab:panel  r:resume  f:search  d:date  h:help  Esc/q:back ",
+        (false, true) => " Tab:panel  r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit ",
+        (false, false) => " Tab:panel  r:resume  f:search  d:date  h:help  Esc/q:quit ",
     };
 
     let left_len = status_text.len() + search_indicator.len();
