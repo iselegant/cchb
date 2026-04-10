@@ -1,5 +1,5 @@
 [package]
-name = "cchist"
+name = "cchb"
 version = "0.1.0"
 edition = "2024"
 description = "A TUI tool for browsing and restoring past Claude Code session history"
