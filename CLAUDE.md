@@ -32,3 +32,6 @@
 ### Documentation
 - All documentation must be written in English
 - This includes README.md, docs/, ADRs, comments in code, and any other project documentation
+- After every implementation, check whether documentation (SPECIFICATION.md, ADRs, etc.) needs updating
+- If updates are needed, apply them before marking the task complete
+- If no updates are needed, explicitly state so with a brief reason

@@ -137,6 +137,12 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         (KeyCode::Tab, _) => {
             app.toggle_panel();
         }
+        (KeyCode::Char('n'), _) => {
+            app.jump_to_next_match();
+        }
+        (KeyCode::Char('N'), _) => {
+            app.jump_to_prev_match();
+        }
         (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
             app.toggle_help();
         }
@@ -521,6 +527,41 @@ mod tests {
         handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
         assert!(app.should_quit);
         assert_eq!(app.resume_session_id.as_deref(), Some("sess-1"));
+    }
+
+    #[test]
+    fn test_viewing_n_jumps_to_next_match() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 5);
+        handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.conversation_scroll, 15);
+    }
+
+    #[test]
+    fn test_viewing_shift_n_jumps_to_prev_match() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
+        assert_eq!(app.search_match_current, Some(2));
+        assert_eq!(app.conversation_scroll, 25);
+        handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.conversation_scroll, 15);
+    }
+
+    #[test]
+    fn test_viewing_n_no_matches_does_nothing() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.search_match_current, None);
+        assert_eq!(app.conversation_scroll, 0);
     }
 
     #[test]

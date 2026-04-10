@@ -33,6 +33,7 @@ pub struct Theme {
     pub assistant_border: Style,
     pub search_input: Style,
     pub search_highlight: Style,
+    pub search_highlight_current: Style,
     pub help_title: Style,
     pub help_key: Style,
     pub help_desc: Style,
@@ -68,6 +69,10 @@ impl Theme {
             search_highlight: Style::default()
                 .fg(Color::Black)
                 .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+            search_highlight_current: Style::default()
+                .fg(Color::Black)
+                .bg(Color::Indexed(208)) // orange — distinct from yellow
                 .add_modifier(Modifier::BOLD),
             help_title: Style::default()
                 .fg(Color::Cyan)
