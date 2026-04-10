@@ -396,7 +396,17 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         app.conversation_cache_key = current_cache_key;
     }
 
-    let lines = if !app.search_query.is_empty() {
+    // Compute viewport dimensions and clamp scroll BEFORE cloning any lines.
+    let content_area = body_block.inner(body_area);
+    let visible_height = content_area.height as usize;
+    let total_lines = app.conversation_lines_cache.len();
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    app.conversation_scroll = app.conversation_scroll.min(max_scroll);
+
+    let scroll = app.conversation_scroll;
+    let visible_end = (scroll + visible_height).min(total_lines);
+
+    let visible_lines = if !app.search_query.is_empty() {
         let query_lower = app.search_query.to_lowercase();
 
         // Recompute match positions only when query or conversation changed.
@@ -428,12 +438,14 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         let current_highlight: Option<(usize, usize)> = app
             .search_match_current
             .map(|idx| app.search_match_positions[idx]);
-        let lines: Vec<Line> = app
-            .conversation_lines_cache
-            .clone()
-            .into_iter()
+
+        // Clone and highlight only the visible lines instead of the entire cache.
+        app.conversation_lines_cache[scroll..visible_end]
+            .iter()
             .enumerate()
-            .map(|(i, line)| {
+            .map(|(vi, line)| {
+                let i = scroll + vi;
+                let line = line.clone();
                 if let Some((cur_line, cur_occ)) = current_highlight
                     && cur_line == i
                 {
@@ -448,24 +460,15 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
                     highlight_line(line, &query_lower, theme.search_highlight)
                 }
             })
-            .collect();
-        lines
+            .collect::<Vec<Line>>()
     } else {
         app.search_match_positions.clear();
         app.search_match_current = None;
-        app.conversation_lines_cache.clone()
+        // Clone only the visible portion of the cache.
+        app.conversation_lines_cache[scroll..visible_end].to_vec()
     };
 
-    // Clamp scroll so content cannot scroll past the last line
-    let content_area = body_block.inner(body_area);
-    let visible_height = content_area.height as usize;
-    let total_lines = lines.len();
-    let max_scroll = total_lines.saturating_sub(visible_height);
-    app.conversation_scroll = app.conversation_scroll.min(max_scroll);
-
-    let paragraph = Paragraph::new(lines)
-        .block(body_block)
-        .scroll((app.conversation_scroll as u16, 0));
+    let paragraph = Paragraph::new(visible_lines).block(body_block);
 
     frame.render_widget(paragraph, body_area);
 
