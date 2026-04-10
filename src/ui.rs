@@ -82,8 +82,13 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
         theme.border_inactive
     };
 
+    let title = if app.active_panel == Panel::SessionList {
+        Line::from(Span::styled(" ▶ Sessions ", theme.border_active))
+    } else {
+        Line::from(Span::styled("   Sessions ", theme.border_inactive))
+    };
     let block = Block::default()
-        .title(" Sessions ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -154,8 +159,13 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     let chunks = Layout::vertical([Constraint::Length(5), Constraint::Min(1)]).split(area);
 
     // Render session header pane
+    let conv_title = if app.active_panel == Panel::ConversationView {
+        Line::from(Span::styled(" ▶ Conversation ", theme.border_active))
+    } else {
+        Line::from(Span::styled("   Conversation ", theme.border_inactive))
+    };
     let header_block = Block::default()
-        .title(Line::from(Span::styled(" Conversation ", theme.title)))
+        .title(conv_title)
         .borders(Borders::ALL)
         .border_style(border_style);
 

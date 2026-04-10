@@ -1,4 +1,4 @@
-use crate::app::{AppMode, AppState, DateField};
+use crate::app::{AppMode, AppState, DateField, Panel};
 use crate::filter;
 use crate::session;
 use anyhow::Result;
@@ -26,16 +26,32 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.should_quit = true;
         }
         (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
-            app.select_next();
+            if app.active_panel == Panel::ConversationView {
+                app.scroll_conversation_down();
+            } else {
+                app.select_next();
+            }
         }
         (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
-            app.select_prev();
+            if app.active_panel == Panel::ConversationView {
+                app.scroll_conversation_up();
+            } else {
+                app.select_prev();
+            }
         }
         (KeyCode::Char('g'), _) => {
-            app.go_top();
+            if app.active_panel == Panel::ConversationView {
+                app.scroll_conversation_top();
+            } else {
+                app.go_top();
+            }
         }
         (KeyCode::Char('G'), _) => {
-            app.go_bottom();
+            if app.active_panel == Panel::ConversationView {
+                app.conversation_scroll = usize::MAX / 2;
+            } else {
+                app.go_bottom();
+            }
         }
         (KeyCode::Right, _) => {
             app.page_down();
@@ -44,10 +60,20 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.page_up();
         }
         (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_down(app.items_per_page * 2);
+            if app.active_panel == Panel::ConversationView {
+                let half = app.items_per_page;
+                app.conversation_scroll += half;
+            } else {
+                app.half_page_down(app.items_per_page * 2);
+            }
         }
         (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_up(app.items_per_page * 2);
+            if app.active_panel == Panel::ConversationView {
+                let half = app.items_per_page;
+                app.conversation_scroll = app.conversation_scroll.saturating_sub(half);
+            } else {
+                app.half_page_up(app.items_per_page * 2);
+            }
         }
         (KeyCode::Enter, _) | (KeyCode::Char('l'), _) => {
             if let Some(session) = app.selected_session() {
@@ -498,6 +524,44 @@ mod tests {
         handle_key(&mut app, make_key(KeyCode::Char('c'))).unwrap();
         assert_eq!(app.filtered_indices.len(), 5);
         assert_eq!(app.search_query, "");
+    }
+
+    #[test]
+    fn test_normal_j_scrolls_conversation_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
+        assert_eq!(app.conversation_scroll, 1);
+        assert_eq!(app.selected_index, 0); // session list should NOT move
+    }
+
+    #[test]
+    fn test_normal_k_scrolls_conversation_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.conversation_scroll = 5;
+        handle_key(&mut app, make_key(KeyCode::Char('k'))).unwrap();
+        assert_eq!(app.conversation_scroll, 4);
+    }
+
+    #[test]
+    fn test_normal_g_scrolls_conversation_top_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.conversation_scroll = 10;
+        handle_key(&mut app, make_key(KeyCode::Char('g'))).unwrap();
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_normal_shift_g_scrolls_conversation_bottom_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Char('G'))).unwrap();
+        assert!(app.conversation_scroll > 0);
+        assert_eq!(app.selected_index, 0); // session list should NOT move
     }
 
     #[test]
