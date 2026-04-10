@@ -398,26 +398,32 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
 
     let lines = if !app.search_query.is_empty() {
         let query_lower = app.search_query.to_lowercase();
-        let mut match_positions: Vec<(usize, usize)> = Vec::new();
-        // Collect all (line_index, occurrence_index) pairs
-        for (i, line) in app.conversation_lines_cache.iter().enumerate() {
-            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-            let text_lower = text.to_lowercase();
-            let mut occ = 0;
-            let mut start = 0;
-            while let Some(pos) = text_lower[start..].find(&query_lower) {
-                match_positions.push((i, occ));
-                occ += 1;
-                start += pos + query_lower.len();
+
+        // Recompute match positions only when query or conversation changed.
+        let match_cache_key = (app.search_query.clone(), app.conversation_cache_key.clone());
+        if app.search_match_cache_key != match_cache_key {
+            let mut match_positions: Vec<(usize, usize)> = Vec::new();
+            for (i, line) in app.conversation_lines_cache.iter().enumerate() {
+                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+                let text_lower = text.to_lowercase();
+                let mut occ = 0;
+                let mut start = 0;
+                while let Some(pos) = text_lower[start..].find(&query_lower) {
+                    match_positions.push((i, occ));
+                    occ += 1;
+                    start += pos + query_lower.len();
+                }
+            }
+            app.search_match_positions = match_positions;
+            app.search_match_cache_key = match_cache_key;
+            // Reset current index if it's out of bounds
+            if let Some(idx) = app.search_match_current
+                && idx >= app.search_match_positions.len()
+            {
+                app.search_match_current = None;
             }
         }
-        app.search_match_positions = match_positions;
-        // Reset current index if it's out of bounds
-        if let Some(idx) = app.search_match_current
-            && idx >= app.search_match_positions.len()
-        {
-            app.search_match_current = None;
-        }
+
         // Determine which line has the current match and which occurrence within it
         let current_highlight: Option<(usize, usize)> = app
             .search_match_current
