@@ -326,7 +326,16 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
         String::new()
     };
 
-    let hints = " r:resume  f:search  d:date  h:help  q:quit ";
+    let has_filters = !app.search_query.is_empty()
+        || !app.date_from_input.is_empty()
+        || !app.date_to_input.is_empty();
+
+    let hints = match (app.mode == AppMode::Viewing, has_filters) {
+        (true, true) => " r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back ",
+        (true, false) => " r:resume  f:search  d:date  h:help  Esc/q:back ",
+        (false, true) => " r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit ",
+        (false, false) => " r:resume  f:search  d:date  h:help  Esc/q:quit ",
+    };
 
     let left_len = status_text.len() + search_indicator.len();
     let fill_len = (area.width as usize)
