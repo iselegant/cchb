@@ -264,12 +264,16 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.toggle_panel();
         }
         (KeyCode::Char('n'), _) => {
-            if app.jump_to_next_match_cross_session() {
+            if app.active_panel == Panel::ConversationView {
+                app.jump_to_next_match();
+            } else if app.jump_to_next_match_cross_session() {
                 reload_conversation(app);
             }
         }
         (KeyCode::Char('N'), _) => {
-            if app.jump_to_prev_match_cross_session() {
+            if app.active_panel == Panel::ConversationView {
+                app.jump_to_prev_match();
+            } else if app.jump_to_prev_match_cross_session() {
                 reload_conversation(app);
             }
         }
@@ -1104,29 +1108,27 @@ mod tests {
     }
 
     #[test]
-    fn test_viewing_n_navigates_within_conversation_then_cross_session() {
+    fn test_viewing_n_stays_within_conversation_when_conversation_panel() {
         let mut app = AppState::new(make_sessions(5));
         app.mode = AppMode::Viewing;
         app.active_panel = Panel::ConversationView;
         app.search_query = "test".into();
         app.search_match_positions = vec![(5, 0), (15, 0)];
-        // First n: navigate within session (not at last match yet)
+        // First n: navigate within session
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, Some(0));
         assert_eq!(app.selected_index, 0); // still same session
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, Some(1)); // now at last match
-        // Next n at last match: should advance to next session
+        // Next n at last match: should wrap within conversation, NOT cross session
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
-        assert_eq!(app.selected_index, 1); // advanced to next session
-        assert_eq!(
-            app.pending_search_jump,
-            Some(crate::app::SearchJumpDirection::First)
-        );
+        assert_eq!(app.search_match_current, Some(0)); // wrapped to first match
+        assert_eq!(app.selected_index, 0); // still same session
+        assert_eq!(app.pending_search_jump, None);
     }
 
     #[test]
-    fn test_viewing_shift_n_navigates_within_conversation_then_cross_session() {
+    fn test_viewing_shift_n_stays_within_conversation_when_conversation_panel() {
         let mut app = AppState::new(make_sessions(5));
         app.mode = AppMode::Viewing;
         app.active_panel = Panel::ConversationView;
@@ -1137,13 +1139,11 @@ mod tests {
         assert_eq!(app.search_match_current, Some(1));
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
         assert_eq!(app.search_match_current, Some(0)); // now at first match
-        // Next N at first match: should go to previous session
+        // Next N at first match: should wrap within conversation, NOT cross session
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
-        assert_eq!(app.selected_index, 4); // wrapped to last session
-        assert_eq!(
-            app.pending_search_jump,
-            Some(crate::app::SearchJumpDirection::Last)
-        );
+        assert_eq!(app.search_match_current, Some(1)); // wrapped to last match
+        assert_eq!(app.selected_index, 0); // still same session
+        assert_eq!(app.pending_search_jump, None);
     }
 
     #[test]
