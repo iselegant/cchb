@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 /// Metadata for a session, used in the session list panel.
@@ -86,15 +87,6 @@ struct RawMessage {
 struct RawInnerMessage {
     role: Option<String>,
     content: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct RawContentBlock {
-    #[serde(rename = "type")]
-    block_type: Option<String>,
-    text: Option<String>,
-    thinking: Option<String>,
-    name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -186,17 +178,28 @@ fn parse_content_blocks(content: &Option<serde_json::Value>) -> Option<Vec<Conte
             let blocks: Vec<ContentBlock> = arr
                 .iter()
                 .filter_map(|v| {
-                    let block: RawContentBlock = serde_json::from_value(v.clone()).ok()?;
-                    match block.block_type.as_deref()? {
-                        "text" => Some(ContentBlock::Text(block.text.unwrap_or_default())),
-                        "thinking" => {
-                            Some(ContentBlock::Thinking(block.thinking.unwrap_or_default()))
+                    let block_type = v.get("type").and_then(|t| t.as_str())?;
+                    match block_type {
+                        "text" => {
+                            let text = v.get("text").and_then(|t| t.as_str()).unwrap_or_default();
+                            Some(ContentBlock::Text(text.to_string()))
                         }
-                        "tool_use" => Some(ContentBlock::ToolUse {
-                            name: block.name.unwrap_or_default(),
-                        }),
+                        "thinking" => {
+                            let thinking = v
+                                .get("thinking")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or_default();
+                            Some(ContentBlock::Thinking(thinking.to_string()))
+                        }
+                        "tool_use" => {
+                            let name = v.get("name").and_then(|t| t.as_str()).unwrap_or_default();
+                            Some(ContentBlock::ToolUse {
+                                name: name.to_string(),
+                            })
+                        }
                         "tool_result" => {
-                            Some(ContentBlock::ToolResult(block.text.unwrap_or_default()))
+                            let text = v.get("text").and_then(|t| t.as_str()).unwrap_or_default();
+                            Some(ContentBlock::ToolResult(text.to_string()))
                         }
                         _ => None,
                     }
@@ -412,10 +415,11 @@ fn load_sessions_from_jsonl_scan(
             .unwrap_or("")
             .to_string();
 
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
+        let file = match fs::File::open(&path) {
+            Ok(f) => f,
             Err(_) => continue,
         };
+        let reader = BufReader::new(file);
 
         let mut first_prompt = String::new();
         let mut first_timestamp: Option<DateTime<Utc>> = None;
@@ -424,8 +428,8 @@ fn load_sessions_from_jsonl_scan(
         let mut cwd: Option<String> = None;
         let mut message_count = 0usize;
 
-        for line in content.lines().take(50) {
-            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(line) {
+        for line in reader.lines().map_while(Result::ok).take(50) {
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&line) {
                 let msg_type = raw.get("type").and_then(|v| v.as_str());
 
                 if msg_type == Some("user") || msg_type == Some("assistant") {
@@ -520,7 +524,7 @@ pub fn extract_searchable_text(path: &Path) -> String {
         Err(_) => return String::new(),
     };
 
-    let mut texts = Vec::new();
+    let mut buf = String::new();
     for line in content.lines() {
         if let Ok(raw) = serde_json::from_str::<serde_json::Value>(line) {
             let msg_type = raw.get("type").and_then(|v| v.as_str());
@@ -538,21 +542,27 @@ pub fn extract_searchable_text(path: &Path) -> String {
             if let Some(msg) = raw.get("message")
                 && let Some(content) = msg.get("content")
             {
+                let mut append = |s: &str| {
+                    if !buf.is_empty() {
+                        buf.push(' ');
+                    }
+                    buf.push_str(s);
+                };
                 if let Some(s) = content.as_str() {
-                    texts.push(s.to_string());
+                    append(s);
                 } else if let Some(arr) = content.as_array() {
                     for block in arr {
                         if block.get("type").and_then(|v| v.as_str()) == Some("text")
                             && let Some(text) = block.get("text").and_then(|v| v.as_str())
                         {
-                            texts.push(text.to_string());
+                            append(text);
                         }
                     }
                 }
             }
         }
     }
-    texts.join(" ")
+    buf
 }
 
 /// Load and parse a conversation from a session JSONL file.

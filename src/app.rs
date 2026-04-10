@@ -87,6 +87,9 @@ pub struct AppState {
     /// Cache key for search match positions: (query, conversation_cache_key).
     /// When this matches the current state, skip recomputing match positions.
     pub search_match_cache_key: (String, (Option<String>, u16)),
+    /// Cached lowercased search query. Recomputed only when `search_query` changes.
+    search_query_lower_src: String,
+    search_query_lower_val: String,
 }
 
 impl AppState {
@@ -127,7 +130,18 @@ impl AppState {
             conversation_lines_cache: Vec::new(),
             conversation_cache_key: (None, 0),
             search_match_cache_key: (String::new(), (None, 0)),
+            search_query_lower_src: String::new(),
+            search_query_lower_val: String::new(),
         }
+    }
+
+    /// Return the cached lowercased search query, recomputing only when `search_query` changed.
+    pub fn search_query_lower(&mut self) -> &str {
+        if self.search_query_lower_src != self.search_query {
+            self.search_query_lower_val = self.search_query.to_lowercase();
+            self.search_query_lower_src.clone_from(&self.search_query);
+        }
+        &self.search_query_lower_val
     }
 
     pub fn selected_session(&self) -> Option<&SessionIndex> {

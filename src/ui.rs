@@ -407,7 +407,8 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     let visible_end = (scroll + visible_height).min(total_lines);
 
     let visible_lines = if !app.search_query.is_empty() {
-        let query_lower = app.search_query.to_lowercase();
+        // Use cached lowercased query to avoid re-allocating every frame.
+        let query_lower = app.search_query_lower().to_string();
 
         // Recompute match positions only when query or conversation changed.
         let match_cache_key = (app.search_query.clone(), app.conversation_cache_key.clone());

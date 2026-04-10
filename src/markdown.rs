@@ -474,38 +474,24 @@ fn build_table_row(
         let cell = cells.get(i);
         let cell_width: usize = cell.map(|c| cell_text_width(c)).unwrap_or(0);
 
-        if let Some(cell_spans) = cell {
+        let actual_width = if let Some(cell_spans) = cell {
             if cell_width <= *col_width {
                 // Cell fits — render as-is
                 for span in cell_spans {
                     let style = cell_style_override.unwrap_or(span.style);
                     spans.push(Span::styled(span.content.to_string(), style));
                 }
+                cell_width
             } else {
-                // Cell too wide — concatenate text and truncate
+                // Cell too wide — concatenate text and truncate once
                 let full_text: String = cell_spans.iter().map(|s| s.content.as_ref()).collect();
                 let style = cell_style_override
                     .or(cell_spans.first().map(|s| s.style))
                     .unwrap_or_default();
-                spans.push(Span::styled(
-                    truncate_to_width(&full_text, *col_width),
-                    style,
-                ));
-            }
-        }
-
-        let actual_width = if let Some(cell_spans) = cell {
-            if cell_width <= *col_width {
-                cell_width
-            } else {
-                truncate_to_width(
-                    &cell_spans
-                        .iter()
-                        .map(|s| s.content.as_ref())
-                        .collect::<String>(),
-                    *col_width,
-                )
-                .width()
+                let truncated = truncate_to_width(&full_text, *col_width);
+                let w = truncated.width();
+                spans.push(Span::styled(truncated, style));
+                w
             }
         } else {
             0
