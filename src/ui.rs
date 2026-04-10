@@ -11,6 +11,18 @@ use ratatui::widgets::{
     ScrollbarState,
 };
 
+/// Compute scrollbar content_length and position for the session list.
+/// Uses the same pattern as the conversation view: max_scroll + 1 as content_length
+/// and the list offset as position, to keep the thumb size stable across scroll positions.
+fn session_scrollbar_params(
+    total_items: usize,
+    items_per_page: usize,
+    offset: usize,
+) -> (usize, usize) {
+    let max_scroll = total_items.saturating_sub(items_per_page);
+    (max_scroll + 1, offset)
+}
+
 pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     let outer = Layout::vertical([
         Constraint::Length(3), // title bar (ASCII art)
@@ -179,8 +191,10 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
     // Render scrollbar
     let total_items = app.filtered_indices.len();
     if total_items > app.items_per_page {
-        let mut scrollbar_state = ScrollbarState::new(total_items)
-            .position(app.list_state.selected().unwrap_or(0))
+        let (content_length, position) =
+            session_scrollbar_params(total_items, app.items_per_page, app.list_state.offset());
+        let mut scrollbar_state = ScrollbarState::new(content_length)
+            .position(position)
             .viewport_content_length(app.items_per_page);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
         frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
@@ -793,5 +807,45 @@ mod tests {
         assert_eq!(result.spans[0].content.as_ref(), "run ");
         assert_eq!(result.spans[1].content.as_ref(), "terraform");
         assert_eq!(result.spans[1].style, hl_style());
+    }
+
+    #[test]
+    fn test_session_scrollbar_params_basic() {
+        // 20 items, 5 visible → max_scroll = 15, content_length = 16
+        let (content_length, position) = session_scrollbar_params(20, 5, 0);
+        assert_eq!(content_length, 16);
+        assert_eq!(position, 0);
+    }
+
+    #[test]
+    fn test_session_scrollbar_params_scrolled() {
+        // offset = 10 → position = 10
+        let (content_length, position) = session_scrollbar_params(20, 5, 10);
+        assert_eq!(content_length, 16);
+        assert_eq!(position, 10);
+    }
+
+    #[test]
+    fn test_session_scrollbar_params_at_max_scroll() {
+        // offset = 15 (max) → position = 15, content_length = 16
+        let (content_length, position) = session_scrollbar_params(20, 5, 15);
+        assert_eq!(content_length, 16);
+        assert_eq!(position, 15);
+    }
+
+    #[test]
+    fn test_session_scrollbar_params_items_equal_page() {
+        // total == items_per_page → max_scroll = 0, content_length = 1
+        let (content_length, position) = session_scrollbar_params(5, 5, 0);
+        assert_eq!(content_length, 1);
+        assert_eq!(position, 0);
+    }
+
+    #[test]
+    fn test_session_scrollbar_params_fewer_items_than_page() {
+        // total < items_per_page → max_scroll = 0, content_length = 1
+        let (content_length, position) = session_scrollbar_params(3, 5, 0);
+        assert_eq!(content_length, 1);
+        assert_eq!(position, 0);
     }
 }
