@@ -154,14 +154,14 @@ Each JSONL file consists of one message per line:
 
 | Key | Mode | Action |
 |-----|------|--------|
-| `j` / `Down` | Normal | Select next session |
-| `k` / `Up` | Normal | Select previous session |
-| `g` | Normal/Viewing | Jump to top |
-| `G` | Normal/Viewing | Jump to bottom |
-| `Right` | Normal | Next page of sessions |
-| `Left` | Normal | Previous page of sessions |
-| `Ctrl+d` | Normal/Viewing | Half-page scroll down |
-| `Ctrl+u` | Normal/Viewing | Half-page scroll up |
+| `j` / `Down` | Normal/Viewing | Panel-aware: select next session (Session panel) / scroll conversation down (Conversation panel) |
+| `k` / `Up` | Normal/Viewing | Panel-aware: select previous session (Session panel) / scroll conversation up (Conversation panel) |
+| `g` | Normal/Viewing | Panel-aware: jump to top of session list or conversation |
+| `G` | Normal/Viewing | Panel-aware: jump to bottom of session list or conversation |
+| `Right` | Normal | Next page of sessions (Session panel) / scroll conversation (Conversation panel) |
+| `Left` | Normal | Previous page of sessions (Session panel) / scroll conversation (Conversation panel) |
+| `Ctrl+d` | Normal/Viewing | Panel-aware: half-page scroll down in active panel |
+| `Ctrl+u` | Normal/Viewing | Panel-aware: half-page scroll up in active panel |
 | `Enter` / `l` | Normal | Open session (enter Viewing mode) |
 | `Esc` / `q` | Viewing | Return to list |
 | `q` | Normal | Quit application |

@@ -103,7 +103,7 @@ impl AppState {
             .and_then(|&i| self.sessions.get(i))
     }
 
-    fn sync_list_state(&mut self) {
+    pub fn sync_list_state(&mut self) {
         if self.filtered_indices.is_empty() {
             self.list_state.select(None);
         } else {
