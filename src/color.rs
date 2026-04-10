@@ -81,8 +81,10 @@ impl Theme {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
             help_desc: Style::default().fg(Color::Gray),
-            border_active: Style::default().fg(Color::Cyan),
-            border_inactive: Style::default().fg(Color::DarkGray),
+            border_active: Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+            border_inactive: Style::default().fg(Color::Indexed(238)),
             status_bar: Style::default().fg(Color::White).bg(Color::DarkGray),
             title: Style::default()
                 .fg(Color::Cyan)
