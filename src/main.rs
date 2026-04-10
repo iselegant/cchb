@@ -56,8 +56,8 @@ fn maybe_load_focused_conversation(app: &mut AppState) {
     if let Some(sess) = app.selected_session() {
         let path = sess.file_path.clone();
         if let Ok(messages) = session::load_conversation(&path) {
-            let display = session::display_messages(&messages);
-            app.conversation = display.into_iter().cloned().collect();
+            let display = session::display_messages(messages);
+            app.conversation = display;
         } else {
             app.conversation.clear();
         }
