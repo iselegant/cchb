@@ -301,7 +301,13 @@ fn load_sessions_from_index(
         };
 
         let file_path = match entry.full_path {
-            Some(p) => PathBuf::from(p),
+            Some(p) => {
+                let path = PathBuf::from(p);
+                if !path.exists() {
+                    continue;
+                }
+                path
+            }
             None => continue,
         };
 
@@ -914,6 +920,53 @@ mod tests {
     }
 
     #[test]
+    fn test_discover_sessions_excludes_missing_files_from_index() {
+        let dir = TempDir::new().unwrap();
+        let claude_dir = dir.path();
+        let project_dir = claude_dir
+            .join("projects")
+            .join("-Users-foo-Documents-proj");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let index = serde_json::json!({
+            "version": "1",
+            "entries": [
+                {
+                    "sessionId": "exists",
+                    "fullPath": project_dir.join("exists.jsonl").to_str().unwrap(),
+                    "firstPrompt": "Hello",
+                    "messageCount": 3,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T12:00:00Z",
+                    "isSidechain": false
+                },
+                {
+                    "sessionId": "missing",
+                    "fullPath": project_dir.join("missing.jsonl").to_str().unwrap(),
+                    "firstPrompt": "World",
+                    "messageCount": 5,
+                    "created": "2026-04-08T10:00:00Z",
+                    "modified": "2026-04-08T11:00:00Z",
+                    "isSidechain": false
+                }
+            ]
+        });
+
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        // Only create the file for the "exists" session
+        fs::write(project_dir.join("exists.jsonl"), "").unwrap();
+
+        let sessions = discover_sessions(claude_dir).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "exists");
+    }
+
+    #[test]
     fn test_discover_sessions_excludes_empty_sessions_from_jsonl_scan() {
         let dir = TempDir::new().unwrap();
         let claude_dir = dir.path();
@@ -1017,6 +1070,11 @@ mod tests {
             serde_json::to_string(&index).unwrap(),
         )
         .unwrap();
+
+        // Create JSONL files so they pass the existence check
+        fs::write(project_dir.join("real-session.jsonl"), "").unwrap();
+        fs::write(project_dir.join("no-prompt-session.jsonl"), "").unwrap();
+        fs::write(project_dir.join("stderr-session.jsonl"), "").unwrap();
 
         let sessions = discover_sessions(claude_dir).unwrap();
         assert_eq!(sessions.len(), 1);
