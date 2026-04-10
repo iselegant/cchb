@@ -83,6 +83,14 @@ fn run_app(
             ui::render(frame, app, theme);
         })?;
 
+        // Resolve pending cross-session search jumps after render populates match positions.
+        while app.resolve_pending_search_jump() {
+            maybe_load_focused_conversation(app);
+            terminal.draw(|frame| {
+                ui::render(frame, app, theme);
+            })?;
+        }
+
         // Poll for background search cache completion.
         app.poll_search_cache();
 

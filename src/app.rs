@@ -25,6 +25,12 @@ pub enum DateField {
     To,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SearchJumpDirection {
+    First,
+    Last,
+}
+
 /// Maximum total size of search content cache (1 GB).
 const SEARCH_CACHE_MAX_BYTES: usize = 1_073_741_824;
 
@@ -62,6 +68,10 @@ pub struct AppState {
     pub search_match_positions: Vec<(usize, usize)>,
     /// Current index into `search_match_positions` (None when no navigation has occurred).
     pub search_match_current: Option<usize>,
+    /// Deferred jump direction after cross-session search navigation.
+    pub pending_search_jump: Option<SearchJumpDirection>,
+    /// The `selected_index` where cross-session navigation started, to detect full-cycle wrap.
+    pub pending_search_jump_origin: Option<usize>,
 }
 
 impl AppState {
@@ -94,6 +104,8 @@ impl AppState {
             search_cache_receiver: None,
             search_match_positions: Vec::new(),
             search_match_current: None,
+            pending_search_jump: None,
+            pending_search_jump_origin: None,
         }
     }
 
@@ -425,6 +437,135 @@ impl AppState {
         self.conversation_scroll = self.search_match_positions[prev]
             .0
             .saturating_sub(Self::SEARCH_SCROLL_MARGIN);
+    }
+
+    /// Jump to next match, crossing session boundaries when SessionList panel is active.
+    /// Returns true if the session changed (caller should reload conversation).
+    pub fn jump_to_next_match_cross_session(&mut self) -> bool {
+        if self.search_query.is_empty() {
+            return false;
+        }
+        // If there are matches and we're not at the last one (or haven't started), navigate within
+        if !self.search_match_positions.is_empty() {
+            if self.search_match_current.is_none() {
+                self.jump_to_next_match();
+                return false;
+            }
+            let at_last = self.search_match_current == Some(self.search_match_positions.len() - 1);
+            if !at_last {
+                self.jump_to_next_match();
+                return false;
+            }
+        }
+        // At last match or no matches: move to next session
+        if self.filtered_indices.len() <= 1 {
+            // Only one (or zero) session: wrap within conversation
+            self.jump_to_next_match();
+            return false;
+        }
+        let origin = self.selected_index;
+        self.selected_index = (self.selected_index + 1) % self.filtered_indices.len();
+        self.conversation_scroll = 0;
+        self.search_match_current = None;
+        self.search_match_positions.clear();
+        self.sync_list_state();
+        self.pending_search_jump = Some(SearchJumpDirection::First);
+        if self.pending_search_jump_origin.is_none() {
+            self.pending_search_jump_origin = Some(origin);
+        }
+        true
+    }
+
+    /// Jump to previous match, crossing session boundaries when SessionList panel is active.
+    /// Returns true if the session changed (caller should reload conversation).
+    pub fn jump_to_prev_match_cross_session(&mut self) -> bool {
+        if self.search_query.is_empty() {
+            return false;
+        }
+        if !self.search_match_positions.is_empty() {
+            // If no current position, let normal prev_match handle it (goes to last)
+            if self.search_match_current.is_none() {
+                self.jump_to_prev_match();
+                return false;
+            }
+            if self.search_match_current != Some(0) {
+                self.jump_to_prev_match();
+                return false;
+            }
+        }
+        // At first match or no matches: move to previous session
+        if self.filtered_indices.len() <= 1 {
+            self.jump_to_prev_match();
+            return false;
+        }
+        let origin = self.selected_index;
+        self.selected_index = if self.selected_index == 0 {
+            self.filtered_indices.len() - 1
+        } else {
+            self.selected_index - 1
+        };
+        self.conversation_scroll = 0;
+        self.search_match_current = None;
+        self.search_match_positions.clear();
+        self.sync_list_state();
+        self.pending_search_jump = Some(SearchJumpDirection::Last);
+        if self.pending_search_jump_origin.is_none() {
+            self.pending_search_jump_origin = Some(origin);
+        }
+        true
+    }
+
+    /// Resolve a pending cross-session search jump after render has populated match positions.
+    /// Returns true if cascade is needed (no matches found, must advance to next session).
+    pub fn resolve_pending_search_jump(&mut self) -> bool {
+        let direction = match &self.pending_search_jump {
+            Some(d) => d.clone(),
+            None => return false,
+        };
+        if !self.search_match_positions.is_empty() {
+            // Matches found: apply the jump
+            match direction {
+                SearchJumpDirection::First => {
+                    self.search_match_current = Some(0);
+                    self.conversation_scroll = self.search_match_positions[0]
+                        .0
+                        .saturating_sub(Self::SEARCH_SCROLL_MARGIN);
+                }
+                SearchJumpDirection::Last => {
+                    let last = self.search_match_positions.len() - 1;
+                    self.search_match_current = Some(last);
+                    self.conversation_scroll = self.search_match_positions[last]
+                        .0
+                        .saturating_sub(Self::SEARCH_SCROLL_MARGIN);
+                }
+            }
+            self.pending_search_jump = None;
+            self.pending_search_jump_origin = None;
+            return false;
+        }
+        // No matches in this session: check if we've completed a full cycle
+        if self.pending_search_jump_origin == Some(self.selected_index) {
+            self.pending_search_jump = None;
+            self.pending_search_jump_origin = None;
+            return false;
+        }
+        // Advance to next/prev session and signal cascade
+        match direction {
+            SearchJumpDirection::First => {
+                self.selected_index = (self.selected_index + 1) % self.filtered_indices.len();
+            }
+            SearchJumpDirection::Last => {
+                self.selected_index = if self.selected_index == 0 {
+                    self.filtered_indices.len() - 1
+                } else {
+                    self.selected_index - 1
+                };
+            }
+        }
+        self.conversation_scroll = 0;
+        self.search_match_current = None;
+        self.sync_list_state();
+        true
     }
 
     /// Request resuming the currently selected session. Sets the session ID/project path and quits.
@@ -984,5 +1125,224 @@ mod tests {
         app.request_resume();
         assert!(!app.should_quit);
         assert!(app.resume_session_id.is_none());
+    }
+
+    // --- Cross-session search navigation tests ---
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_no_search_query() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(!changed);
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_stays_when_not_at_last() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        app.search_match_current = Some(0);
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(!changed);
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_stays_when_current_none() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        // search_match_current is None (first press)
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(!changed);
+        assert_eq!(app.search_match_current, Some(0)); // jumps to first
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_moves_session_at_last_match() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(1); // at last match
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(changed);
+        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.pending_search_jump, Some(SearchJumpDirection::First));
+        assert_eq!(app.pending_search_jump_origin, Some(0));
+        assert_eq!(app.search_match_current, None);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_no_matches() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        // No match positions in current conversation
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(changed);
+        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.pending_search_jump, Some(SearchJumpDirection::First));
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_wraps_around() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.selected_index = 2; // last session
+        app.sync_list_state();
+        let changed = app.jump_to_next_match_cross_session();
+        assert!(changed);
+        assert_eq!(app.selected_index, 0); // wrapped to first
+    }
+
+    #[test]
+    fn test_jump_to_next_match_cross_session_single_session_wraps_within() {
+        let mut app = AppState::new(make_sessions(1));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(1); // at last match
+        let changed = app.jump_to_next_match_cross_session();
+        // Only one session: wrap within conversation
+        assert!(!changed);
+        assert_eq!(app.search_match_current, Some(0));
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_cross_session_stays_when_not_at_first() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        app.search_match_current = Some(2);
+        let changed = app.jump_to_prev_match_cross_session();
+        assert!(!changed);
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_cross_session_stays_when_current_none() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        // search_match_current is None → jumps to last in current session
+        let changed = app.jump_to_prev_match_cross_session();
+        assert!(!changed);
+        assert_eq!(app.search_match_current, Some(1)); // last match
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_cross_session_moves_session_at_first_match() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.selected_index = 2;
+        app.sync_list_state();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(0); // at first match
+        let changed = app.jump_to_prev_match_cross_session();
+        assert!(changed);
+        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.pending_search_jump, Some(SearchJumpDirection::Last));
+        assert_eq!(app.pending_search_jump_origin, Some(2));
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_cross_session_wraps_around() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.selected_index = 0; // first session
+        app.search_match_positions = vec![(5, 0)];
+        app.search_match_current = Some(0);
+        let changed = app.jump_to_prev_match_cross_session();
+        assert!(changed);
+        assert_eq!(app.selected_index, 2); // wrapped to last
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_none() {
+        let mut app = AppState::new(make_sessions(3));
+        let needs_more = app.resolve_pending_search_jump();
+        assert!(!needs_more);
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_first() {
+        let mut app = AppState::new(make_sessions(3));
+        app.pending_search_jump = Some(SearchJumpDirection::First);
+        app.pending_search_jump_origin = Some(0);
+        app.search_match_positions = vec![(10, 0), (20, 0)];
+        let needs_more = app.resolve_pending_search_jump();
+        assert!(!needs_more);
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 5); // 10 - 5
+        assert_eq!(app.pending_search_jump, None);
+        assert_eq!(app.pending_search_jump_origin, None);
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_last() {
+        let mut app = AppState::new(make_sessions(3));
+        app.pending_search_jump = Some(SearchJumpDirection::Last);
+        app.pending_search_jump_origin = Some(2);
+        app.search_match_positions = vec![(10, 0), (20, 0), (30, 0)];
+        let needs_more = app.resolve_pending_search_jump();
+        assert!(!needs_more);
+        assert_eq!(app.search_match_current, Some(2)); // last
+        assert_eq!(app.conversation_scroll, 25); // 30 - 5
+        assert_eq!(app.pending_search_jump, None);
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_no_matches_advances_forward() {
+        let mut app = AppState::new(make_sessions(5));
+        app.selected_index = 1;
+        app.sync_list_state();
+        app.pending_search_jump = Some(SearchJumpDirection::First);
+        app.pending_search_jump_origin = Some(0);
+        // No matches in this session
+        let needs_more = app.resolve_pending_search_jump();
+        assert!(needs_more);
+        assert_eq!(app.selected_index, 2); // advanced
+        assert_eq!(app.pending_search_jump, Some(SearchJumpDirection::First));
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_no_matches_advances_backward() {
+        let mut app = AppState::new(make_sessions(5));
+        app.selected_index = 3;
+        app.sync_list_state();
+        app.pending_search_jump = Some(SearchJumpDirection::Last);
+        app.pending_search_jump_origin = Some(4);
+        // No matches in this session
+        let needs_more = app.resolve_pending_search_jump();
+        assert!(needs_more);
+        assert_eq!(app.selected_index, 2); // retreated
+    }
+
+    #[test]
+    fn test_resolve_pending_search_jump_full_cycle_stops() {
+        let mut app = AppState::new(make_sessions(3));
+        app.selected_index = 0;
+        app.sync_list_state();
+        app.pending_search_jump = Some(SearchJumpDirection::First);
+        app.pending_search_jump_origin = Some(0); // started here
+        // No matches, and we've returned to origin
+        let needs_more = app.resolve_pending_search_jump();
+        // Should detect we're back at origin and stop
+        assert!(!needs_more);
+        assert_eq!(app.pending_search_jump, None);
     }
 }

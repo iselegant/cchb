@@ -490,7 +490,11 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
         help_line("c", "Clear all filters", theme),
         help_line("r", "Reload sessions", theme),
         help_line("[ / ]", "Prev / Next session (viewing)", theme),
-        help_line("n / N", "Next / Prev search match (viewing)", theme),
+        help_line(
+            "n / N",
+            "Next / Prev match (cross-session in session panel)",
+            theme,
+        ),
         Line::from(""),
         Line::from(Span::styled(" Press any key to close", theme.help_desc)),
     ];
