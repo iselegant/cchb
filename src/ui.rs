@@ -433,13 +433,13 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
                 {
                     highlight_line_with_current(
                         line,
-                        &app.search_query,
+                        &query_lower,
                         theme.search_highlight,
                         theme.search_highlight_current,
                         cur_occ,
                     )
                 } else {
-                    highlight_line(line, &app.search_query, theme.search_highlight)
+                    highlight_line(line, &query_lower, theme.search_highlight)
                 }
             })
             .collect();
@@ -660,38 +660,40 @@ fn help_line<'a>(key: &'a str, desc: &'a str, theme: &Theme) -> Line<'a> {
 }
 
 /// Highlight all case-insensitive occurrences of `query` within a line's spans.
+/// `query_lower` must be the pre-lowercased form of the original query.
 /// Matching portions are rendered with `highlight_style`.
-fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Line<'a> {
-    if query.is_empty() {
+fn highlight_line<'a>(line: Line<'a>, query_lower: &str, highlight_style: Style) -> Line<'a> {
+    if query_lower.is_empty() {
         return line;
     }
-    let query_lower = query.to_lowercase();
+    let query_len = query_lower.len();
     let mut result_spans: Vec<Span<'a>> = Vec::new();
 
     for span in line.spans {
-        let text = span.content.to_string();
-        let text_lower = text.to_lowercase();
         let style = span.style;
+        let text_lower = span.content.to_lowercase();
 
+        if !text_lower.contains(query_lower) {
+            // Fast path: no match in this span, keep as-is without allocating
+            result_spans.push(span);
+            continue;
+        }
+
+        // Slow path: matches exist, need to split the span
+        let text = span.content.into_owned();
         let mut pos = 0;
-        let mut has_match = false;
 
-        for (start, _) in text_lower.match_indices(&query_lower) {
-            has_match = true;
+        for (start, _) in text_lower.match_indices(query_lower) {
             if start > pos {
                 result_spans.push(Span::styled(text[pos..start].to_string(), style));
             }
-            let end = start + query.len();
+            let end = start + query_len;
             result_spans.push(Span::styled(text[start..end].to_string(), highlight_style));
             pos = end;
         }
 
-        if has_match {
-            if pos < text.len() {
-                result_spans.push(Span::styled(text[pos..].to_string(), style));
-            }
-        } else {
-            result_spans.push(Span::styled(text, style));
+        if pos < text.len() {
+            result_spans.push(Span::styled(text[pos..].to_string(), style));
         }
     }
 
@@ -700,34 +702,40 @@ fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Li
 
 /// Highlight all occurrences of `query`, using `current_style` for the `current_occ`-th
 /// occurrence and `highlight_style` for all others.
+/// `query_lower` must be the pre-lowercased form of the original query.
 fn highlight_line_with_current<'a>(
     line: Line<'a>,
-    query: &str,
+    query_lower: &str,
     highlight_style: Style,
     current_style: Style,
     current_occ: usize,
 ) -> Line<'a> {
-    if query.is_empty() {
+    if query_lower.is_empty() {
         return line;
     }
-    let query_lower = query.to_lowercase();
+    let query_len = query_lower.len();
     let mut result_spans: Vec<Span<'a>> = Vec::new();
     let mut global_occ: usize = 0;
 
     for span in line.spans {
-        let text = span.content.to_string();
-        let text_lower = text.to_lowercase();
         let style = span.style;
+        let text_lower = span.content.to_lowercase();
 
+        if !text_lower.contains(query_lower) {
+            // Fast path: no match in this span, keep as-is
+            result_spans.push(span);
+            continue;
+        }
+
+        // Slow path: matches exist, need to split the span
+        let text = span.content.into_owned();
         let mut pos = 0;
-        let mut has_match = false;
 
-        for (start, _) in text_lower.match_indices(&query_lower) {
-            has_match = true;
+        for (start, _) in text_lower.match_indices(query_lower) {
             if start > pos {
                 result_spans.push(Span::styled(text[pos..start].to_string(), style));
             }
-            let end = start + query.len();
+            let end = start + query_len;
             let hl = if global_occ == current_occ {
                 current_style
             } else {
@@ -738,12 +746,8 @@ fn highlight_line_with_current<'a>(
             pos = end;
         }
 
-        if has_match {
-            if pos < text.len() {
-                result_spans.push(Span::styled(text[pos..].to_string(), style));
-            }
-        } else {
-            result_spans.push(Span::styled(text, style));
+        if pos < text.len() {
+            result_spans.push(Span::styled(text[pos..].to_string(), style));
         }
     }
 
