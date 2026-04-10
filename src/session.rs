@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
@@ -227,8 +228,6 @@ pub fn discover_sessions(claude_dir: &Path) -> Result<Vec<SessionIndex>> {
         return Ok(Vec::new());
     }
 
-    let mut sessions = Vec::new();
-
     let entries = fs::read_dir(&projects_dir).with_context(|| {
         format!(
             "Failed to read projects directory: {}",
@@ -236,46 +235,53 @@ pub fn discover_sessions(claude_dir: &Path) -> Result<Vec<SessionIndex>> {
         )
     })?;
 
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
+    // Collect directory entries first, then process in parallel.
+    let dirs: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
 
-        let dir_name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
+    let mut sessions: Vec<SessionIndex> = dirs
+        .par_iter()
+        .flat_map(|path| {
+            let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => return Vec::new(),
+            };
 
-        let project_path = decode_project_path(&dir_name);
-        let project_display = project_display_name(&project_path);
+            let project_path = decode_project_path(&dir_name);
+            let project_display = project_display_name(&project_path);
 
-        let mut seen_ids: HashSet<String> = HashSet::new();
+            let mut dir_sessions = Vec::new();
+            let mut seen_ids: HashSet<String> = HashSet::new();
 
-        // Try sessions-index.json fast path
-        let index_path = path.join("sessions-index.json");
-        if index_path.exists()
-            && let Ok(index_sessions) =
-                load_sessions_from_index(&index_path, &project_path, &project_display)
-        {
-            for s in &index_sessions {
-                seen_ids.insert(s.session_id.clone());
+            // Try sessions-index.json fast path
+            let index_path = path.join("sessions-index.json");
+            if index_path.exists()
+                && let Ok(index_sessions) =
+                    load_sessions_from_index(&index_path, &project_path, &project_display)
+            {
+                for s in &index_sessions {
+                    seen_ids.insert(s.session_id.clone());
+                }
+                dir_sessions.extend(index_sessions);
             }
-            sessions.extend(index_sessions);
-        }
 
-        // Always scan JSONL files to catch sessions not in the index
-        if let Ok(scanned_sessions) =
-            load_sessions_from_jsonl_scan(&path, &project_path, &project_display)
-        {
-            for s in scanned_sessions {
-                if !seen_ids.contains(&s.session_id) {
-                    sessions.push(s);
+            // Always scan JSONL files to catch sessions not in the index
+            if let Ok(scanned_sessions) =
+                load_sessions_from_jsonl_scan(path, &project_path, &project_display)
+            {
+                for s in scanned_sessions {
+                    if !seen_ids.contains(&s.session_id) {
+                        dir_sessions.push(s);
+                    }
                 }
             }
-        }
-    }
+
+            dir_sessions
+        })
+        .collect();
 
     sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
     Ok(sessions)
