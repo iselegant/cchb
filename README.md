@@ -84,7 +84,7 @@ cchb
 ## UI Layout
 
 ```
-┌─ cchb - Claude Code History Browser ────────────┐
+┌─ cchb - Claude Code History Browser ─────────────┐
 ├──────────────────┬───────────────────────────────┤
 │ Sessions (35%)   │ Conversation (65%)            │
 │                  │                               │
@@ -92,7 +92,7 @@ cchb
 │   (main)         │ │   Run terraform plan        │
 │   2026-04-08     │ └─                            │
 │   "terraform..." │                               │
-│                  │ │ Claude:                      │
+│                  │ │ Claude:                     │
 │   project-b      │ │   Here are the results...   │
 │   (feature/x)    │ └─                            │
 │   2026-04-07     │                               │
