@@ -77,6 +77,8 @@ pub struct AppState {
     pub conversation_reloading: bool,
     /// When the reload indicator was triggered (used to auto-dismiss after a short duration).
     pub conversation_reload_at: Option<Instant>,
+    /// Timestamp when the logo sparkle animation started (hidden easter egg).
+    pub logo_sparkle_start: Option<Instant>,
 }
 
 impl AppState {
@@ -113,6 +115,7 @@ impl AppState {
             pending_search_jump_origin: None,
             conversation_reloading: false,
             conversation_reload_at: None,
+            logo_sparkle_start: None,
         }
     }
 
@@ -591,6 +594,26 @@ impl AppState {
             self.conversation_reloading = false;
             self.conversation_reload_at = None;
         }
+    }
+
+    /// Duration of the logo sparkle animation.
+    const SPARKLE_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// Start the logo sparkle animation (hidden easter egg).
+    pub fn start_logo_sparkle(&mut self) {
+        self.logo_sparkle_start = Some(Instant::now());
+    }
+
+    /// Returns true if the logo sparkle animation is currently active.
+    /// Automatically clears the state when the duration has elapsed.
+    pub fn is_logo_sparkling(&mut self) -> bool {
+        if let Some(start) = self.logo_sparkle_start {
+            if start.elapsed() < Self::SPARKLE_DURATION {
+                return true;
+            }
+            self.logo_sparkle_start = None;
+        }
+        false
     }
 
     /// Request resuming the currently selected session. Sets the session ID/project path and quits.
@@ -1397,6 +1420,36 @@ mod tests {
         app.check_reload_expired();
         assert!(!app.conversation_reloading);
         assert!(app.conversation_reload_at.is_none());
+    }
+
+    #[test]
+    fn test_start_logo_sparkle_sets_start_time() {
+        let mut app = AppState::new(make_sessions(3));
+        assert!(app.logo_sparkle_start.is_none());
+        app.start_logo_sparkle();
+        assert!(app.logo_sparkle_start.is_some());
+    }
+
+    #[test]
+    fn test_is_logo_sparkling_true_when_active() {
+        let mut app = AppState::new(make_sessions(3));
+        app.start_logo_sparkle();
+        assert!(app.is_logo_sparkling());
+    }
+
+    #[test]
+    fn test_is_logo_sparkling_false_when_not_started() {
+        let mut app = AppState::new(make_sessions(3));
+        assert!(!app.is_logo_sparkling());
+    }
+
+    #[test]
+    fn test_is_logo_sparkling_false_after_expiry() {
+        let mut app = AppState::new(make_sessions(3));
+        app.logo_sparkle_start =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(6));
+        assert!(!app.is_logo_sparkling());
+        assert!(app.logo_sparkle_start.is_none()); // cleared
     }
 
     #[test]

@@ -97,7 +97,13 @@ fn run_app(
         // Auto-dismiss reload indicator after timeout.
         app.check_reload_expired();
 
-        if crossterm::event::poll(Duration::from_millis(250))?
+        // Use shorter poll interval during logo sparkle animation for smooth color cycling.
+        let poll_ms = if app.logo_sparkle_start.is_some() {
+            50
+        } else {
+            250
+        };
+        if crossterm::event::poll(Duration::from_millis(poll_ms))?
             && let Event::Key(key) = crossterm::event::read()?
         {
             if key.kind != KeyEventKind::Press {

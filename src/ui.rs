@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     ])
     .split(frame.area());
 
-    render_title_bar(frame, outer[0], theme);
+    render_title_bar(frame, outer[0], app, theme);
     render_main_content(frame, outer[1], app, theme);
     render_status_bar(frame, outer[2], app, theme);
 
@@ -32,19 +32,49 @@ pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     }
 }
 
-fn render_title_bar(frame: &mut Frame, area: Rect, _theme: &Theme) {
-    let c1 = Style::default()
-        .fg(Color::Cyan)
-        .add_modifier(Modifier::BOLD);
-    let c2 = Style::default()
-        .fg(Color::Magenta)
-        .add_modifier(Modifier::BOLD);
-    let c3 = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::BOLD);
-    let c4 = Style::default()
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::BOLD);
+/// Color palette for the sparkle animation — cycles through these per letter group.
+const SPARKLE_COLORS: [Color; 6] = [
+    Color::LightRed,
+    Color::LightYellow,
+    Color::LightGreen,
+    Color::LightCyan,
+    Color::LightMagenta,
+    Color::White,
+];
+
+fn render_title_bar(frame: &mut Frame, area: Rect, app: &mut AppState, _theme: &Theme) {
+    let sparkling = app.is_logo_sparkling();
+
+    let (c1, c2, c3, c4) = if sparkling {
+        // Derive a phase from elapsed time — shift every 150ms for a shimmering effect
+        let elapsed_ms = app
+            .logo_sparkle_start
+            .map(|s| s.elapsed().as_millis() as usize)
+            .unwrap_or(0);
+        let phase = elapsed_ms / 150;
+        let len = SPARKLE_COLORS.len();
+        let pick = |offset: usize| {
+            Style::default()
+                .fg(SPARKLE_COLORS[(phase + offset) % len])
+                .add_modifier(Modifier::BOLD)
+        };
+        (pick(0), pick(1), pick(2), pick(3))
+    } else {
+        (
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
     let dim = Style::default().fg(Color::DarkGray);
 
     let version = format!("  v{}", env!("CARGO_PKG_VERSION"));
