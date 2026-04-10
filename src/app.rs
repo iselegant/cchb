@@ -1,6 +1,7 @@
 use crate::filter;
 use crate::session::{self, ConversationMessage, SessionIndex};
 use chrono::{Days, Local};
+use ratatui::text::Line;
 use ratatui::widgets::ListState;
 use std::sync::mpsc;
 use std::time::Instant;
@@ -79,6 +80,10 @@ pub struct AppState {
     pub conversation_reload_at: Option<Instant>,
     /// Timestamp when the logo sparkle animation started (hidden easter egg).
     pub logo_sparkle_start: Option<Instant>,
+    /// Cached rendered conversation lines (before search highlighting).
+    pub conversation_lines_cache: Vec<Line<'static>>,
+    /// Cache key: (session_id, render_width) — invalidate when either changes.
+    pub conversation_cache_key: (Option<String>, u16),
 }
 
 impl AppState {
@@ -116,6 +121,8 @@ impl AppState {
             conversation_reloading: false,
             conversation_reload_at: None,
             logo_sparkle_start: None,
+            conversation_lines_cache: Vec::new(),
+            conversation_cache_key: (None, 0),
         }
     }
 
@@ -215,11 +222,17 @@ impl AppState {
         self.conversation_scroll = 0;
     }
 
+    pub fn invalidate_conversation_cache(&mut self) {
+        self.conversation_lines_cache.clear();
+        self.conversation_cache_key = (None, 0);
+    }
+
     pub fn enter_viewing(&mut self) {
         if self.selected_session().is_some() {
             self.mode = AppMode::Viewing;
             self.active_panel = Panel::ConversationView;
             self.conversation_scroll = 0;
+            self.invalidate_conversation_cache();
         }
     }
 
@@ -584,6 +597,7 @@ impl AppState {
         self.loaded_session_id = None;
         self.conversation_reloading = true;
         self.conversation_reload_at = Some(Instant::now());
+        self.invalidate_conversation_cache();
     }
 
     /// Clear the reload indicator after 500ms have elapsed.
@@ -634,6 +648,7 @@ mod tests {
     use super::*;
     use crate::session::SessionIndex;
     use chrono::Utc;
+    use ratatui::text::Line;
     use std::path::PathBuf;
 
     fn make_sessions(n: usize) -> Vec<SessionIndex> {
@@ -1450,6 +1465,43 @@ mod tests {
             Some(std::time::Instant::now() - std::time::Duration::from_secs(6));
         assert!(!app.is_logo_sparkling());
         assert!(app.logo_sparkle_start.is_none()); // cleared
+    }
+
+    #[test]
+    fn test_conversation_cache_initial_state() {
+        let app = AppState::new(make_sessions(3));
+        assert!(app.conversation_lines_cache.is_empty());
+        assert_eq!(app.conversation_cache_key, (None, 0));
+    }
+
+    #[test]
+    fn test_invalidate_conversation_cache() {
+        let mut app = AppState::new(make_sessions(3));
+        app.conversation_lines_cache = vec![Line::from("cached")];
+        app.conversation_cache_key = (Some("sess-0".into()), 80);
+        app.invalidate_conversation_cache();
+        assert!(app.conversation_lines_cache.is_empty());
+        assert_eq!(app.conversation_cache_key, (None, 0));
+    }
+
+    #[test]
+    fn test_enter_viewing_invalidates_cache() {
+        let mut app = AppState::new(make_sessions(3));
+        app.conversation_lines_cache = vec![Line::from("cached")];
+        app.conversation_cache_key = (Some("sess-0".into()), 80);
+        app.enter_viewing();
+        assert!(app.conversation_lines_cache.is_empty());
+        assert_eq!(app.conversation_cache_key, (None, 0));
+    }
+
+    #[test]
+    fn test_request_reload_invalidates_cache() {
+        let mut app = AppState::new(make_sessions(3));
+        app.conversation_lines_cache = vec![Line::from("cached")];
+        app.conversation_cache_key = (Some("sess-0".into()), 80);
+        app.request_reload_conversation();
+        assert!(app.conversation_lines_cache.is_empty());
+        assert_eq!(app.conversation_cache_key, (None, 0));
     }
 
     #[test]
