@@ -113,14 +113,22 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             if app.active_panel == Panel::ConversationView {
                 app.jump_to_next_match();
             } else if !app.search_query.is_empty() {
-                enter_viewing_with_search_jump(app, crate::app::SearchJumpDirection::First);
+                enter_viewing_with_search_jump(
+                    app,
+                    crate::app::SearchJumpDirection::First,
+                    Panel::SessionList,
+                );
             }
         }
         (KeyCode::Char('N'), _) => {
             if app.active_panel == Panel::ConversationView {
                 app.jump_to_prev_match();
             } else if !app.search_query.is_empty() {
-                enter_viewing_with_search_jump(app, crate::app::SearchJumpDirection::Last);
+                enter_viewing_with_search_jump(
+                    app,
+                    crate::app::SearchJumpDirection::Last,
+                    Panel::SessionList,
+                );
             }
         }
         (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
@@ -374,10 +382,17 @@ fn handle_help_key(app: &mut AppState) {
 }
 
 /// Enter Viewing mode, load the conversation, and set a pending search jump.
-fn enter_viewing_with_search_jump(app: &mut AppState, direction: crate::app::SearchJumpDirection) {
+/// The `panel` parameter controls which panel stays active after entering
+/// Viewing mode (e.g. `Panel::SessionList` to keep focus on the session list).
+fn enter_viewing_with_search_jump(
+    app: &mut AppState,
+    direction: crate::app::SearchJumpDirection,
+    panel: Panel,
+) {
     if app.selected_session().is_some() {
         let path = app.selected_session().unwrap().file_path.clone();
         app.enter_viewing();
+        app.active_panel = panel;
         if let Ok(messages) = session::load_conversation(&path) {
             app.conversation = session::display_messages(messages);
         }
@@ -1169,15 +1184,14 @@ mod tests {
     }
 
     #[test]
-    fn test_normal_n_enters_viewing_from_session_list_with_search() {
+    fn test_normal_n_enters_viewing_and_stays_on_session_panel() {
         let mut app = AppState::new(make_sessions(5));
         app.search_query = "test".into();
-        // active_panel defaults to SessionList
         assert_eq!(app.active_panel, Panel::SessionList);
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
-        // Should enter Viewing mode and set pending jump
+        // Should enter Viewing mode but keep focus on SessionList
         assert_eq!(app.mode, AppMode::Viewing);
-        assert_eq!(app.active_panel, Panel::ConversationView);
+        assert_eq!(app.active_panel, Panel::SessionList);
         assert_eq!(
             app.pending_search_jump,
             Some(crate::app::SearchJumpDirection::First)
@@ -1185,12 +1199,13 @@ mod tests {
     }
 
     #[test]
-    fn test_normal_shift_n_enters_viewing_from_session_list_with_search() {
+    fn test_normal_shift_n_enters_viewing_and_stays_on_session_panel() {
         let mut app = AppState::new(make_sessions(5));
         app.search_query = "test".into();
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
+        // Should enter Viewing mode but keep focus on SessionList
         assert_eq!(app.mode, AppMode::Viewing);
-        assert_eq!(app.active_panel, Panel::ConversationView);
+        assert_eq!(app.active_panel, Panel::SessionList);
         assert_eq!(
             app.pending_search_jump,
             Some(crate::app::SearchJumpDirection::Last)
