@@ -551,11 +551,13 @@ pub fn wrap_line(line: Line<'static>, max_width: usize) -> Vec<Line<'static>> {
     for span in line.spans {
         let style = span.style;
         let full_text: String = span.content.to_string();
+        let span_total_w = full_text.width();
         let mut offset = 0;
+        let mut consumed_w: usize = 0;
 
         while offset < full_text.len() {
             let remaining = &full_text[offset..];
-            let remaining_w = remaining.width();
+            let remaining_w = span_total_w - consumed_w;
             let space_left = max_width.saturating_sub(current_width);
 
             if remaining_w <= space_left {
@@ -575,19 +577,26 @@ pub fn wrap_line(line: Line<'static>, max_width: usize) -> Vec<Line<'static>> {
                         current_width = 0;
                     } else {
                         let forced = force_break_at(remaining, max_width);
+                        let chunk_w = full_text[offset..offset + forced].width();
                         current.push(Span::styled(remaining[..forced].to_string(), style));
                         result.push(Line::from(std::mem::take(&mut current)));
                         current_width = 0;
                         offset += forced;
-                        offset += count_leading_spaces(&full_text[offset..]);
+                        consumed_w += chunk_w;
+                        let spaces = count_leading_spaces(&full_text[offset..]);
+                        offset += spaces;
+                        consumed_w += spaces; // ASCII spaces are 1 width each
                     }
                 } else {
                     let chunk = remaining[..break_byte].trim_end();
                     current.push(Span::styled(chunk.to_string(), style));
                     result.push(Line::from(std::mem::take(&mut current)));
                     current_width = 0;
+                    consumed_w += full_text[offset..offset + break_byte].width();
                     offset += break_byte;
-                    offset += count_leading_spaces(&full_text[offset..]);
+                    let spaces = count_leading_spaces(&full_text[offset..]);
+                    offset += spaces;
+                    consumed_w += spaces;
                 }
             }
         }
