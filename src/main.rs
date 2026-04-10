@@ -94,6 +94,9 @@ fn run_app(
         // Poll for background search cache completion.
         app.poll_search_cache();
 
+        // Auto-dismiss reload indicator after timeout.
+        app.check_reload_expired();
+
         if crossterm::event::poll(Duration::from_millis(250))?
             && let Event::Key(key) = crossterm::event::read()?
         {

@@ -162,7 +162,8 @@ Each JSONL file consists of one message per line:
 | `Left` | Normal | Previous page of sessions (Session panel) / scroll conversation (Conversation panel) |
 | `Ctrl+d` | Normal/Viewing | Panel-aware: half-page scroll down in active panel |
 | `Ctrl+u` | Normal/Viewing | Panel-aware: half-page scroll up in active panel |
-| `Enter` / `l` | Normal | Open session (enter Viewing mode) |
+| `Enter` | Normal | Open session (enter Viewing mode) / Toggle panel (Conversation panel) |
+| `Enter` | Viewing | Toggle panel focus |
 | `Esc` / `q` | Viewing | Return to list |
 | `q` | Normal | Quit application |
 
@@ -198,6 +199,7 @@ Each JSONL file consists of one message per line:
 | `Tab` | Normal/Viewing | Toggle focus between left/right panels |
 | `/` | Viewing | In-conversation text search |
 | `c` | Normal | Clear all filters |
+| `l` | Viewing | Reload conversation (re-read JSONL file) |
 | `R` (Shift+r) | Normal | Reload session list |
 | `[` / `]` | Viewing | Navigate to previous/next session without returning to list |
 | `n` / `N` | Viewing | Panel-aware: Jump to next/previous search match — in Conversation panel wraps within session; in Session panel navigates across sessions (wraps around session list) |
