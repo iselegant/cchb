@@ -167,9 +167,9 @@ Each JSONL file consists of one message per line:
 | `Esc` / `q` | Viewing | Return to list |
 | `q` | Normal | Quit application |
 
-### FR-4: Fuzzy Search (f key)
+### FR-4: Fuzzy Search (f / / key)
 
-- Press `f` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
+- Press `f` or `/` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
 - Substring matching against conversation content (case-insensitive)
 - Search targets: full conversation content (all displayed user and assistant text blocks, excluding sidechains)
 - Real-time filtering of session list as user types
@@ -197,7 +197,7 @@ Each JSONL file consists of one message per line:
 | Key | Mode | Action |
 |-----|------|--------|
 | `Tab` | Normal/Viewing | Toggle focus between left/right panels |
-| `/` | Viewing | In-conversation text search |
+| `/` | Normal/Viewing | Fuzzy search (same as `f` key) |
 | `c` | Normal | Clear all filters |
 | `l` | Viewing | Reload conversation (re-read JSONL file) |
 | `R` (Shift+r) | Normal | Reload session list |

@@ -96,7 +96,7 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 }
             }
         }
-        (KeyCode::Char('f'), _) => {
+        (KeyCode::Char('f') | KeyCode::Char('/'), _) => {
             app.enter_search();
         }
         (KeyCode::Char('d'), _) => {
@@ -219,7 +219,7 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         (KeyCode::Char('l'), _) => {
             app.request_reload_conversation();
         }
-        (KeyCode::Char('f'), _) => {
+        (KeyCode::Char('f') | KeyCode::Char('/'), _) => {
             app.exit_viewing();
             app.enter_search();
         }
@@ -487,6 +487,13 @@ mod tests {
     fn test_f_enters_search() {
         let mut app = AppState::new(make_sessions(3));
         handle_key(&mut app, make_key(KeyCode::Char('f'))).unwrap();
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+    }
+
+    #[test]
+    fn test_slash_enters_search() {
+        let mut app = AppState::new(make_sessions(3));
+        handle_key(&mut app, make_key(KeyCode::Char('/'))).unwrap();
         assert_eq!(app.mode, AppMode::FuzzySearch);
     }
 
@@ -784,6 +791,15 @@ mod tests {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
         handle_key(&mut app, make_key(KeyCode::Char('f'))).unwrap();
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+        assert_eq!(app.active_panel, Panel::SessionList);
+    }
+
+    #[test]
+    fn test_viewing_slash_enters_search() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        handle_key(&mut app, make_key(KeyCode::Char('/'))).unwrap();
         assert_eq!(app.mode, AppMode::FuzzySearch);
         assert_eq!(app.active_panel, Panel::SessionList);
     }

@@ -410,16 +410,16 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
 
     let hints = match (app.mode == AppMode::Viewing, has_filters) {
         (true, true) => {
-            " Tab/Enter:panel  l:reload  r:resume  f:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
+            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
         }
         (true, false) => {
-            " Tab/Enter:panel  l:reload  r:resume  f:search  d:date  h:help  Esc/q:back "
+            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  h:help  Esc/q:back "
         }
         (false, true) => {
-            " Tab/Enter:panel  Enter/l:open  r:resume  f:search  d:date  c:clear  h:help  Esc/q:quit "
+            " Tab/Enter:panel  Enter/l:open  r:resume  f|/:search  d:date  c:clear  h:help  Esc/q:quit "
         }
         (false, false) => {
-            " Tab/Enter:panel  Enter/l:open  r:resume  f:search  d:date  h:help  Esc/q:quit "
+            " Tab/Enter:panel  Enter/l:open  r:resume  f|/:search  d:date  h:help  Esc/q:quit "
         }
     };
 
@@ -532,7 +532,7 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
         help_line("Esc / q", "Back / Quit", theme),
         help_line("Tab", "Switch panel focus", theme),
         help_line("l", "Reload conversation (viewing)", theme),
-        help_line("f", "Fuzzy search sessions", theme),
+        help_line("f / /", "Fuzzy search sessions", theme),
         help_line("d", "Filter by date range", theme),
         help_line("c", "Clear all filters", theme),
         help_line("r", "Reload sessions", theme),
