@@ -226,10 +226,22 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.toggle_panel();
         }
         (KeyCode::Char('n'), _) => {
-            app.jump_to_next_match();
+            if app.active_panel == Panel::SessionList {
+                if app.jump_to_next_match_cross_session() {
+                    reload_conversation(app);
+                }
+            } else {
+                app.jump_to_next_match();
+            }
         }
         (KeyCode::Char('N'), _) => {
-            app.jump_to_prev_match();
+            if app.active_panel == Panel::SessionList {
+                if app.jump_to_prev_match_cross_session() {
+                    reload_conversation(app);
+                }
+            } else {
+                app.jump_to_prev_match();
+            }
         }
         (KeyCode::Char('c'), _) => {
             app.clear_filters();
@@ -764,6 +776,7 @@ mod tests {
     fn test_viewing_n_jumps_to_next_match() {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
         app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, Some(0));
@@ -777,6 +790,7 @@ mod tests {
     fn test_viewing_shift_n_jumps_to_prev_match() {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
         app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
         assert_eq!(app.search_match_current, Some(2));
@@ -881,5 +895,54 @@ mod tests {
         app.mode = AppMode::Help;
         handle_key(&mut app, make_key_ctrl('c')).unwrap();
         assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_viewing_n_cross_session_when_session_panel() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(1); // at last match
+        handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
+        assert_eq!(app.selected_index, 1); // advanced to next session
+        assert_eq!(
+            app.pending_search_jump,
+            Some(crate::app::SearchJumpDirection::First)
+        );
+    }
+
+    #[test]
+    fn test_viewing_n_within_conversation_when_conversation_panel() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
+        app.search_query = "test".into();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(1); // at last match
+        handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
+        // Should wrap within conversation, NOT advance session
+        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.search_match_current, Some(0)); // wrapped to first
+        assert_eq!(app.pending_search_jump, None);
+    }
+
+    #[test]
+    fn test_viewing_shift_n_cross_session_when_session_panel() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.search_query = "test".into();
+        app.selected_index = 2;
+        app.sync_list_state();
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(0); // at first match
+        handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
+        assert_eq!(app.selected_index, 1); // moved to previous session
+        assert_eq!(
+            app.pending_search_jump,
+            Some(crate::app::SearchJumpDirection::Last)
+        );
     }
 }
