@@ -246,6 +246,21 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.exit_viewing();
             app.enter_date_filter();
         }
+        (KeyCode::Right, _) => {
+            if app.active_panel == Panel::ConversationView {
+                app.conversation_scroll += app.items_per_page;
+            } else {
+                app.page_down();
+            }
+        }
+        (KeyCode::Left, _) => {
+            if app.active_panel == Panel::ConversationView {
+                app.conversation_scroll =
+                    app.conversation_scroll.saturating_sub(app.items_per_page);
+            } else {
+                app.page_up();
+            }
+        }
         (KeyCode::Tab, _) | (KeyCode::Enter, _) => {
             app.toggle_panel();
         }
@@ -831,6 +846,54 @@ mod tests {
         app.selected_index = 0;
         handle_key(&mut app, make_key(KeyCode::Char('G'))).unwrap();
         assert_eq!(app.selected_index, 4);
+    }
+
+    #[test]
+    fn test_viewing_right_arrow_pages_down_conversation() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
+        app.items_per_page = 10;
+        app.conversation_scroll = 0;
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert_eq!(app.conversation_scroll, 10);
+        assert_eq!(app.mode, AppMode::Viewing);
+    }
+
+    #[test]
+    fn test_viewing_left_arrow_pages_up_conversation() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
+        app.items_per_page = 10;
+        app.conversation_scroll = 20;
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        assert_eq!(app.conversation_scroll, 10);
+        assert_eq!(app.mode, AppMode::Viewing);
+    }
+
+    #[test]
+    fn test_viewing_right_arrow_pages_down_session_list() {
+        let mut app = AppState::new(make_sessions(30));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.items_per_page = 10;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert_eq!(app.selected_index, 10);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_viewing_left_arrow_pages_up_session_list() {
+        let mut app = AppState::new(make_sessions(30));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.items_per_page = 10;
+        app.selected_index = 20;
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        assert_eq!(app.selected_index, 10);
+        assert_eq!(app.conversation_scroll, 0);
     }
 
     #[test]
