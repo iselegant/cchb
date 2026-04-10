@@ -126,23 +126,76 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.exit_viewing();
         }
         (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
-            app.scroll_conversation_down();
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                app.select_next();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                app.scroll_conversation_down();
+            }
         }
         (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
-            app.scroll_conversation_up();
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                app.select_prev();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                app.scroll_conversation_up();
+            }
         }
         (KeyCode::Char('g'), _) => {
-            app.scroll_conversation_top();
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                app.go_top();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                app.scroll_conversation_top();
+            }
         }
         (KeyCode::Char('G'), _) => {
-            // scroll to bottom - set to large value, clamped by render
-            app.conversation_scroll = usize::MAX / 2;
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                app.go_bottom();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                // scroll to bottom - set to large value, clamped by render
+                app.conversation_scroll = usize::MAX / 2;
+            }
         }
         (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_down(app.items_per_page * 2);
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                let max = app.filtered_indices.len().saturating_sub(1);
+                let half = app.items_per_page;
+                app.selected_index = (app.selected_index + half).min(max);
+                app.sync_list_state();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                app.half_page_down(app.items_per_page * 2);
+            }
         }
         (KeyCode::Char('u'), m) if m.contains(KeyModifiers::CONTROL) => {
-            app.half_page_up(app.items_per_page * 2);
+            if app.active_panel == Panel::SessionList {
+                let prev_idx = app.selected_index;
+                let half = app.items_per_page;
+                app.selected_index = app.selected_index.saturating_sub(half);
+                app.sync_list_state();
+                if app.selected_index != prev_idx {
+                    reload_conversation(app);
+                }
+            } else {
+                app.half_page_up(app.items_per_page * 2);
+            }
         }
         (KeyCode::Char(']'), _) => {
             let prev_idx = app.selected_index;
@@ -598,8 +651,85 @@ mod tests {
     fn test_viewing_j_scrolls_down() {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
         handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
         assert_eq!(app.conversation_scroll, 1);
+    }
+
+    #[test]
+    fn test_viewing_j_selects_next_session_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
+        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.conversation_scroll, 0); // should NOT scroll conversation
+    }
+
+    #[test]
+    fn test_viewing_k_selects_prev_session_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 3;
+        handle_key(&mut app, make_key(KeyCode::Char('k'))).unwrap();
+        assert_eq!(app.selected_index, 2);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_viewing_down_selects_next_session_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Down)).unwrap();
+        assert_eq!(app.selected_index, 1);
+    }
+
+    #[test]
+    fn test_viewing_g_goes_to_top_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 4;
+        handle_key(&mut app, make_key(KeyCode::Char('g'))).unwrap();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_viewing_shift_g_goes_to_bottom_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Char('G'))).unwrap();
+        assert_eq!(app.selected_index, 4);
+    }
+
+    #[test]
+    fn test_viewing_ctrl_d_half_page_down_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(30));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.items_per_page = 8;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key_ctrl('d')).unwrap();
+        assert_eq!(app.selected_index, 8);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_viewing_ctrl_u_half_page_up_when_session_panel_active() {
+        let mut app = AppState::new(make_sessions(30));
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::SessionList;
+        app.items_per_page = 8;
+        app.selected_index = 20;
+        handle_key(&mut app, make_key_ctrl('u')).unwrap();
+        assert_eq!(app.selected_index, 12);
+        assert_eq!(app.conversation_scroll, 0);
     }
 
     #[test]
