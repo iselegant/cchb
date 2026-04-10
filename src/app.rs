@@ -243,9 +243,17 @@ impl AppState {
 
     pub fn enter_search(&mut self) {
         self.search_query.clear();
+        self.mode = AppMode::FuzzySearch;
+
+        // Reuse existing cache if session list hasn't changed.
+        if self.search_content_cache.len() == self.sessions.len()
+            && !self.search_content_cache.is_empty()
+        {
+            return;
+        }
+
         self.search_content_cache.clear();
         self.search_cache_loading = true;
-        self.mode = AppMode::FuzzySearch;
 
         // Collect file paths to move into the background thread.
         let paths: Vec<std::path::PathBuf> =
@@ -293,15 +301,9 @@ impl AppState {
 
     pub fn cancel_search(&mut self) {
         self.search_query.clear();
-        self.clear_search_content_cache();
         self.search_cache_loading = false;
         self.search_cache_receiver = None;
         self.mode = AppMode::Normal;
-    }
-
-    /// Clear the search content cache to free memory.
-    pub fn clear_search_content_cache(&mut self) {
-        self.search_content_cache = Vec::new();
     }
 
     pub fn enter_date_filter(&mut self) {
@@ -1511,5 +1513,43 @@ mod tests {
         app.conversation_reload_at = Some(std::time::Instant::now());
         app.check_reload_expired();
         assert!(app.conversation_reloading);
+    }
+
+    #[test]
+    fn test_enter_search_reuses_cache_when_sessions_unchanged() {
+        let mut app = AppState::new(make_sessions(3));
+        // Simulate a previously built cache matching current sessions
+        app.search_content_cache = vec!["cached-0".into(), "cached-1".into(), "cached-2".into()];
+        app.enter_search();
+        // Cache should be preserved (not cleared)
+        assert_eq!(app.search_content_cache.len(), 3);
+        assert_eq!(app.search_content_cache[0], "cached-0");
+        // Should not be in loading state
+        assert!(!app.search_cache_loading);
+        assert!(app.search_cache_receiver.is_none());
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+    }
+
+    #[test]
+    fn test_enter_search_rebuilds_cache_when_sessions_changed() {
+        let mut app = AppState::new(make_sessions(3));
+        // Simulate a stale cache with different session count
+        app.search_content_cache = vec!["cached-0".into(), "cached-1".into()];
+        app.enter_search();
+        // Cache should be cleared and loading should start
+        assert!(app.search_content_cache.is_empty());
+        assert!(app.search_cache_loading);
+        assert!(app.search_cache_receiver.is_some());
+    }
+
+    #[test]
+    fn test_enter_search_builds_cache_when_empty() {
+        let mut app = AppState::new(make_sessions(3));
+        // No prior cache
+        assert!(app.search_content_cache.is_empty());
+        app.enter_search();
+        // Should start loading
+        assert!(app.search_cache_loading);
+        assert!(app.search_cache_receiver.is_some());
     }
 }
