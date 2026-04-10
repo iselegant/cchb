@@ -2,6 +2,7 @@ use crate::filter;
 use crate::session::{self, ConversationMessage, SessionIndex};
 use chrono::{Days, Local};
 use ratatui::widgets::ListState;
+use std::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -52,6 +53,10 @@ pub struct AppState {
     /// Cached searchable text per session, built on search entry, cleared on exit.
     /// Each entry corresponds to sessions[i]. Empty string means not cached (e.g. over size limit).
     pub search_content_cache: Vec<String>,
+    /// True while the background thread is building the search content cache.
+    pub search_cache_loading: bool,
+    /// Receiver for the background cache-building thread result.
+    pub search_cache_receiver: Option<mpsc::Receiver<Vec<String>>>,
     /// All search match positions as (line_index, occurrence_index_within_line).
     /// Recomputed each render cycle by the UI layer.
     pub search_match_positions: Vec<(usize, usize)>,
@@ -85,6 +90,8 @@ impl AppState {
             resume_project_path: None,
             items_per_page: 5,
             search_content_cache: Vec::new(),
+            search_cache_loading: false,
+            search_cache_receiver: None,
             search_match_positions: Vec::new(),
             search_match_current: None,
         }
@@ -201,31 +208,60 @@ impl AppState {
 
     pub fn enter_search(&mut self) {
         self.search_query.clear();
-        self.build_search_content_cache();
+        self.search_content_cache.clear();
+        self.search_cache_loading = true;
         self.mode = AppMode::FuzzySearch;
+
+        // Collect file paths to move into the background thread.
+        let paths: Vec<std::path::PathBuf> =
+            self.sessions.iter().map(|s| s.file_path.clone()).collect();
+
+        let (tx, rx) = mpsc::channel();
+        self.search_cache_receiver = Some(rx);
+
+        std::thread::spawn(move || {
+            let mut cache = Vec::with_capacity(paths.len());
+            let mut total_bytes: usize = 0;
+            for path in &paths {
+                if total_bytes >= SEARCH_CACHE_MAX_BYTES {
+                    cache.push(String::new());
+                    continue;
+                }
+                let text = session::extract_searchable_text(path);
+                total_bytes = total_bytes.saturating_add(text.len());
+                cache.push(text);
+            }
+            let _ = tx.send(cache);
+        });
+    }
+
+    /// Poll for background cache completion. Call this from the main loop.
+    pub fn poll_search_cache(&mut self) {
+        if let Some(rx) = &self.search_cache_receiver
+            && let Ok(cache) = rx.try_recv()
+        {
+            self.search_content_cache = cache;
+            self.search_cache_loading = false;
+            self.search_cache_receiver = None;
+
+            // Re-apply live filter with current query now that cache is ready.
+            if self.mode == AppMode::FuzzySearch {
+                let indices = filter::fuzzy_filter(
+                    &self.sessions,
+                    &self.search_query,
+                    &self.search_content_cache,
+                );
+                self.update_filtered_indices(indices);
+            }
+        }
     }
 
     pub fn cancel_search(&mut self) {
         self.search_query.clear();
         self.clear_search_content_cache();
+        self.search_cache_loading = false;
+        self.search_cache_receiver = None;
         self.mode = AppMode::Normal;
-    }
-
-    /// Build the search content cache by extracting searchable text from all sessions.
-    /// Respects the 1 GB size cap — sessions beyond the limit get empty strings.
-    fn build_search_content_cache(&mut self) {
-        let mut cache = Vec::with_capacity(self.sessions.len());
-        let mut total_bytes: usize = 0;
-        for session in &self.sessions {
-            if total_bytes >= SEARCH_CACHE_MAX_BYTES {
-                cache.push(String::new());
-                continue;
-            }
-            let text = session::extract_searchable_text(&session.file_path);
-            total_bytes = total_bytes.saturating_add(text.len());
-            cache.push(text);
-        }
-        self.search_content_cache = cache;
     }
 
     /// Clear the search content cache to free memory.

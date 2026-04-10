@@ -83,6 +83,9 @@ fn run_app(
             ui::render(frame, app, theme);
         })?;
 
+        // Poll for background search cache completion.
+        app.poll_search_cache();
+
         if crossterm::event::poll(Duration::from_millis(250))?
             && let Event::Key(key) = crossterm::event::read()?
         {

@@ -165,6 +165,8 @@ fn handle_search_key(app: &mut AppState, key: KeyEvent) {
             let indices = filter::fuzzy_filter(&app.sessions, &query, cache);
             app.update_filtered_indices(indices);
             app.clear_search_content_cache();
+            app.search_cache_loading = false;
+            app.search_cache_receiver = None;
             app.mode = AppMode::Normal;
         }
         KeyCode::Backspace => {
