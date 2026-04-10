@@ -54,10 +54,19 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             }
         }
         (KeyCode::Right, _) => {
-            app.page_down();
+            if app.active_panel == Panel::ConversationView {
+                app.conversation_scroll += app.items_per_page;
+            } else {
+                app.page_down();
+            }
         }
         (KeyCode::Left, _) => {
-            app.page_up();
+            if app.active_panel == Panel::ConversationView {
+                app.conversation_scroll =
+                    app.conversation_scroll.saturating_sub(app.items_per_page);
+            } else {
+                app.page_up();
+            }
         }
         (KeyCode::Char('d'), m) if m.contains(KeyModifiers::CONTROL) => {
             if app.active_panel == Panel::ConversationView {
@@ -543,6 +552,27 @@ mod tests {
         app.conversation_scroll = 5;
         handle_key(&mut app, make_key(KeyCode::Char('k'))).unwrap();
         assert_eq!(app.conversation_scroll, 4);
+    }
+
+    #[test]
+    fn test_normal_right_scrolls_conversation_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.items_per_page = 5;
+        app.selected_index = 0;
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert!(app.conversation_scroll > 0);
+        assert_eq!(app.selected_index, 0); // session list should NOT move
+    }
+
+    #[test]
+    fn test_normal_left_scrolls_conversation_when_panel_is_conversation() {
+        let mut app = AppState::new(make_sessions(5));
+        app.active_panel = Panel::ConversationView;
+        app.items_per_page = 5;
+        app.conversation_scroll = 20;
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        assert!(app.conversation_scroll < 20);
     }
 
     #[test]
