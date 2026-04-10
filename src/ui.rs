@@ -287,66 +287,72 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         .saturating_sub(content_indent_width)
         .saturating_sub(scrollbar_width);
 
-    let mut lines: Vec<Line> = Vec::new();
-    for msg in &app.conversation {
-        if msg.is_sidechain {
-            continue;
-        }
-        let (label, label_style, base_style, border_style) = match msg.role.as_str() {
-            "user" => (
-                "You:",
-                theme.user_label,
-                theme.user_message,
-                theme.user_border,
-            ),
-            "assistant" => (
-                "Claude:",
-                theme.assistant_label,
-                theme.assistant_message,
-                theme.assistant_border,
-            ),
-            _ => continue,
-        };
+    // Use cached lines if cache key matches, otherwise rebuild and cache.
+    let current_cache_key = (app.loaded_session_id.clone(), body_area.width);
+    if app.conversation_cache_key != current_cache_key {
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        for msg in &app.conversation {
+            if msg.is_sidechain {
+                continue;
+            }
+            let (label, label_style, base_style, border_style) = match msg.role.as_str() {
+                "user" => (
+                    "You:",
+                    theme.user_label,
+                    theme.user_message,
+                    theme.user_border,
+                ),
+                "assistant" => (
+                    "Claude:",
+                    theme.assistant_label,
+                    theme.assistant_message,
+                    theme.assistant_border,
+                ),
+                _ => continue,
+            };
 
-        // Label line with border prefix: "│ You:" or "│ Claude:"
-        lines.push(Line::from(vec![
-            Span::styled("│ ", border_style),
-            Span::styled(label, label_style),
-        ]));
-        // Content lines with border prefix: "│   content"
-        let content_start = lines.len();
-        for block_content in &msg.content_blocks {
-            if let ContentBlock::Text(text) = block_content {
-                let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
-                for md_line in md_lines {
-                    let wrapped = markdown::wrap_line(md_line, md_width);
-                    for wrapped_line in wrapped {
-                        let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
-                        spans.extend(wrapped_line.spans);
-                        lines.push(Line::from(spans));
+            // Label line with border prefix: "│ You:" or "│ Claude:"
+            lines.push(Line::from(vec![
+                Span::styled("│ ", border_style),
+                Span::styled(label, label_style),
+            ]));
+            // Content lines with border prefix: "│   content"
+            let content_start = lines.len();
+            for block_content in &msg.content_blocks {
+                if let ContentBlock::Text(text) = block_content {
+                    let md_lines = markdown::render_markdown(text, base_style, theme, md_width);
+                    for md_line in md_lines {
+                        let wrapped = markdown::wrap_line(md_line, md_width);
+                        for wrapped_line in wrapped {
+                            let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
+                            spans.extend(wrapped_line.spans);
+                            lines.push(Line::from(spans));
+                        }
                     }
                 }
             }
-        }
-        // Remove trailing empty content lines (border prefix + whitespace only)
-        while lines.len() > content_start {
-            let last = &lines[lines.len() - 1];
-            let text: String = last.spans.iter().map(|s| s.content.as_ref()).collect();
-            if text.trim().is_empty() || text.trim() == "│" {
-                lines.pop();
-            } else {
-                break;
+            // Remove trailing empty content lines (border prefix + whitespace only)
+            while lines.len() > content_start {
+                let last = &lines[lines.len() - 1];
+                let text: String = last.spans.iter().map(|s| s.content.as_ref()).collect();
+                if text.trim().is_empty() || text.trim() == "│" {
+                    lines.pop();
+                } else {
+                    break;
+                }
             }
+            // End of message: "└─"
+            lines.push(Line::from(Span::styled("└─", border_style)));
         }
-        // End of message: "└─"
-        lines.push(Line::from(Span::styled("└─", border_style)));
+        app.conversation_lines_cache = lines;
+        app.conversation_cache_key = current_cache_key;
     }
 
     let lines = if !app.search_query.is_empty() {
         let query_lower = app.search_query.to_lowercase();
         let mut match_positions: Vec<(usize, usize)> = Vec::new();
         // Collect all (line_index, occurrence_index) pairs
-        for (i, line) in lines.iter().enumerate() {
+        for (i, line) in app.conversation_lines_cache.iter().enumerate() {
             let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
             let text_lower = text.to_lowercase();
             let mut occ = 0;
@@ -368,7 +374,9 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         let current_highlight: Option<(usize, usize)> = app
             .search_match_current
             .map(|idx| app.search_match_positions[idx]);
-        let lines: Vec<Line> = lines
+        let lines: Vec<Line> = app
+            .conversation_lines_cache
+            .clone()
             .into_iter()
             .enumerate()
             .map(|(i, line)| {
@@ -391,7 +399,7 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     } else {
         app.search_match_positions.clear();
         app.search_match_current = None;
-        lines
+        app.conversation_lines_cache.clone()
     };
 
     // Clamp scroll so content cannot scroll past the last line
