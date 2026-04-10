@@ -12,11 +12,15 @@
 - Do not implement changes that deviate from the documented specification without approval
 
 ### Development Methodology
-- Follow TDD (Test-Driven Development) strictly
+- Follow TDD (Test-Driven Development) strictly, regardless of change size
   1. Write failing tests first (Red)
-  2. Implement minimum code to pass tests (Green)
-  3. Refactor while keeping tests green (Refactor)
+  2. Run `cargo test` to confirm the tests fail (Red confirmation)
+  3. Implement minimum code to pass tests (Green)
+  4. Run `cargo test` to confirm the tests pass (Green confirmation)
+  5. Refactor while keeping tests green (Refactor)
 - Never skip writing tests before implementation
+- Never skip confirming test failure/success at each step
+- "Obviously correct" is not an excuse to skip the cycle
 
 ### Architecture Decision Records (ADR)
 - Record significant design and architecture decisions as ADRs in `docs/adr/`

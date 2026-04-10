@@ -85,7 +85,9 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             }
         }
         (KeyCode::Enter, _) | (KeyCode::Char('l'), _) => {
-            if let Some(session) = app.selected_session() {
+            if app.active_panel == Panel::ConversationView {
+                app.toggle_panel();
+            } else if let Some(session) = app.selected_session() {
                 let path = session.file_path.clone();
                 app.enter_viewing();
                 if let Ok(messages) = session::load_conversation(&path) {
@@ -222,7 +224,7 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             app.exit_viewing();
             app.enter_date_filter();
         }
-        (KeyCode::Tab, _) => {
+        (KeyCode::Tab, _) | (KeyCode::Enter, _) => {
             app.toggle_panel();
         }
         (KeyCode::Char('n'), _) => {
@@ -588,6 +590,27 @@ mod tests {
         let mut app = AppState::new(make_sessions(3));
         handle_key(&mut app, make_key(KeyCode::Tab)).unwrap();
         assert_eq!(app.active_panel, crate::app::Panel::ConversationView);
+    }
+
+    #[test]
+    fn test_enter_toggles_panel_in_normal_mode_conversation_panel() {
+        let mut app = AppState::new(make_sessions(3));
+        app.active_panel = Panel::ConversationView;
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.active_panel, Panel::SessionList);
+        // Should NOT enter viewing mode — just toggle panel
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_enter_toggles_panel_in_viewing_mode() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Viewing;
+        assert_eq!(app.active_panel, crate::app::Panel::SessionList);
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.active_panel, crate::app::Panel::ConversationView);
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.active_panel, crate::app::Panel::SessionList);
     }
 
     #[test]
