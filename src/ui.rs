@@ -6,7 +6,10 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState,
+};
 
 pub fn render(frame: &mut Frame, app: &mut AppState, theme: &Theme) {
     let outer = Layout::vertical([
@@ -142,6 +145,16 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
         .highlight_symbol("> ");
 
     frame.render_stateful_widget(list, area, &mut app.list_state);
+
+    // Render scrollbar
+    let total_items = app.filtered_indices.len();
+    if total_items > app.items_per_page {
+        let mut scrollbar_state = ScrollbarState::new(total_items)
+            .position(app.list_state.selected().unwrap_or(0))
+            .viewport_content_length(app.items_per_page);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+        frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+    }
 }
 
 fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &Theme) {
@@ -219,13 +232,16 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     }
 
     // Available width for markdown rendering:
-    // panel inner width minus border prefix ("│ " = 2 chars) and content indent (2 chars)
+    // panel inner width minus border prefix ("│ " = 2 chars), content indent (2 chars),
+    // and scrollbar (1 char)
     let inner_width = body_area.width.saturating_sub(2) as usize; // panel border
     let border_prefix_width = 2; // "│ "
     let content_indent_width = 2; // "  "
+    let scrollbar_width = 1;
     let md_width = inner_width
         .saturating_sub(border_prefix_width)
-        .saturating_sub(content_indent_width);
+        .saturating_sub(content_indent_width)
+        .saturating_sub(scrollbar_width);
 
     let mut lines: Vec<Line> = Vec::new();
     for msg in &app.conversation {
@@ -335,17 +351,28 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     };
 
     // Clamp scroll so content cannot scroll past the last line
-    let visible_height = body_area.height.saturating_sub(2) as usize; // subtract border lines
+    let content_area = body_block.inner(body_area);
+    let visible_height = content_area.height as usize;
     let total_lines = lines.len();
     let max_scroll = total_lines.saturating_sub(visible_height);
     app.conversation_scroll = app.conversation_scroll.min(max_scroll);
 
     let paragraph = Paragraph::new(lines)
         .block(body_block)
-        .wrap(Wrap { trim: false })
         .scroll((app.conversation_scroll as u16, 0));
 
     frame.render_widget(paragraph, body_area);
+
+    // Render scrollbar on body_area so it overlaps the right border.
+    // Scrollbar reaches bottom when position == content_length - 1,
+    // so we use max_scroll + 1 as content_length.
+    if total_lines > visible_height {
+        let mut scrollbar_state = ScrollbarState::new(max_scroll + 1)
+            .position(app.conversation_scroll)
+            .viewport_content_length(visible_height);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+        frame.render_stateful_widget(scrollbar, body_area, &mut scrollbar_state);
+    }
 }
 
 fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Theme) {

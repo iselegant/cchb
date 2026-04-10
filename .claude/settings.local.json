@@ -6,7 +6,8 @@
       "mcp__plugin_context7_context7__resolve-library-id",
       "mcp__plugin_context7_context7__query-docs",
       "Bash(git log:*)",
-      "Bash(grep -rn cchist /Users/masayaarai/Documents/src/iselegant/cchist --include=*.rs --include=*.toml --include=*.md --include=*.yml --include=*.yaml)"
+      "Bash(grep -rn cchist /Users/masayaarai/Documents/src/iselegant/cchist --include=*.rs --include=*.toml --include=*.md --include=*.yml --include=*.yaml)",
+      "Bash(grep:*)"
     ]
   }
 }
