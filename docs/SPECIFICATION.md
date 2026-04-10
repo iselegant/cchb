@@ -172,7 +172,8 @@ Each JSONL file consists of one message per line:
 - Press `f` or `/` in Normal or Viewing mode to activate search mode (Viewing mode exits first)
 - Substring matching against conversation content (case-insensitive)
 - Search targets: full conversation content (all displayed user and assistant text blocks, excluding sidechains)
-- Real-time filtering of session list as user types
+- **Metadata fallback**: When conversation content cache is not yet loaded, search falls back to session metadata (project name, first prompt, summary, git branch)
+- Real-time filtering of session list as user types (immediate via metadata, refined when content cache loads)
 - `Enter` to confirm, `Esc` to cancel
 - **Active search indicator**: When a search query is active after confirmation, it is displayed in the status bar
 - **Conversation highlight**: Matching substrings in the conversation view are highlighted (case-insensitive, black text on yellow background)

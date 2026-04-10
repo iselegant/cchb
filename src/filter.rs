@@ -17,13 +17,31 @@ pub fn fuzzy_filter(
     sessions
         .iter()
         .enumerate()
-        .filter(|(i, _)| {
+        .filter(|(i, session)| {
+            // Try content cache first
             if let Some(cached) = content_cache.get(*i)
                 && !cached.is_empty()
             {
                 return cached.to_lowercase().contains(&query_lower);
             }
-            false
+            // Fallback: match against session metadata
+            session.first_prompt.to_lowercase().contains(&query_lower)
+                || session
+                    .project_display
+                    .to_lowercase()
+                    .contains(&query_lower)
+                || session
+                    .summary
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&query_lower)
+                || session
+                    .git_branch
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&query_lower)
         })
         .map(|(i, _)| i)
         .collect()
@@ -200,10 +218,68 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzzy_filter_empty_cache_no_match() {
+    fn test_fuzzy_filter_empty_cache_falls_back_to_metadata() {
         let sessions = sample_sessions();
-        // With empty cache, non-empty query should match nothing
+        // Without cache, search falls back to metadata (first_prompt contains "terraform")
+        // s1: "Run terraform plan" (first_prompt), s4: "terraform-infra" (project_display)
         let result = fuzzy_filter(&sessions, "terraform", &[]);
+        assert_eq!(result, vec![0, 3]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_metadata_matches_project_display() {
+        let sessions = sample_sessions();
+        // "web-app" matches s2's project_display
+        let result = fuzzy_filter(&sessions, "web-app", &[]);
+        assert_eq!(result, vec![1]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_metadata_matches_git_branch() {
+        let sessions = sample_sessions();
+        // "feature/auth" matches s2's git_branch
+        let result = fuzzy_filter(&sessions, "feature/auth", &[]);
+        assert_eq!(result, vec![1]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_metadata_matches_summary() {
+        let sessions = sample_sessions();
+        // Add a session with summary
+        let mut sessions_with_summary = sessions;
+        sessions_with_summary[2] = make_session(
+            "s3",
+            "api-server",
+            "Add health check endpoint",
+            Some("develop"),
+            "2026-04-08T10:00:00Z",
+        );
+        // Manually set summary by creating a new session
+        let mut s = make_session(
+            "s3",
+            "api-server",
+            "unrelated prompt",
+            Some("develop"),
+            "2026-04-08T10:00:00Z",
+        );
+        s.summary = Some("health check implementation".into());
+        sessions_with_summary[2] = s;
+        let result = fuzzy_filter(&sessions_with_summary, "health check implementation", &[]);
+        assert_eq!(result, vec![2]);
+    }
+
+    #[test]
+    fn test_fuzzy_filter_content_cache_takes_precedence() {
+        let sessions = sample_sessions();
+        // Cache says "unrelated content" for s1, even though metadata has "terraform"
+        let cache = vec![
+            "unrelated content".into(),
+            "unrelated content".into(),
+            "unrelated content".into(),
+            "unrelated content".into(),
+        ];
+        // "terraform" is in s1/s4 metadata but NOT in cache content
+        let result = fuzzy_filter(&sessions, "terraform", &cache);
         assert!(result.is_empty());
     }
 
@@ -315,11 +391,13 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzzy_filter_requires_content_cache() {
-        // Without cache, non-empty query matches nothing (metadata is not searched)
+    fn test_fuzzy_filter_without_cache_uses_metadata() {
+        // Without cache, non-empty query falls back to metadata
         let sessions = sample_sessions();
+        // "terraform" appears in first_prompt of s1 ("Run terraform plan")
         let result = fuzzy_filter(&sessions, "terraform", &[]);
-        assert!(result.is_empty());
+        assert!(!result.is_empty());
+        assert!(result.contains(&0)); // s1
     }
 
     #[test]

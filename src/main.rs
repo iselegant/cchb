@@ -170,6 +170,9 @@ fn main() -> Result<()> {
 
         if let Some(ref project_path) = app.resume_project_path {
             let path = std::path::Path::new(project_path);
+            if !path.is_dir() {
+                std::fs::create_dir_all(path).ok();
+            }
             if path.is_dir() {
                 cmd.current_dir(path);
             }
