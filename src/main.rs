@@ -119,6 +119,7 @@ fn run_app(
                     app.filtered_indices = indices;
                     app.selected_index = 0;
                     app.loaded_session_id = None;
+                    app.invalidate_search_content_cache();
                 }
                 continue;
             }

@@ -304,6 +304,11 @@ impl AppState {
         }
     }
 
+    /// Clear the search content cache (e.g. after session reload).
+    pub fn invalidate_search_content_cache(&mut self) {
+        self.search_content_cache = Vec::new();
+    }
+
     pub fn cancel_search(&mut self) {
         self.search_query.clear();
         self.search_cache_loading = false;
@@ -1570,5 +1575,24 @@ mod tests {
         // Should start loading
         assert!(app.search_cache_loading);
         assert!(app.search_cache_receiver.is_some());
+    }
+
+    #[test]
+    fn test_invalidate_search_content_cache() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_content_cache = vec!["a".into(), "b".into(), "c".into()];
+        app.invalidate_search_content_cache();
+        assert!(app.search_content_cache.is_empty());
+    }
+
+    #[test]
+    fn test_cancel_search_preserves_cache() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_content_cache = vec!["a".into(), "b".into(), "c".into()];
+        app.mode = AppMode::FuzzySearch;
+        app.search_query = "test".into();
+        app.cancel_search();
+        // Cache should be preserved for reuse on next search entry
+        assert_eq!(app.search_content_cache.len(), 3);
     }
 }
