@@ -279,14 +279,12 @@ fn handle_search_key(app: &mut AppState, key: KeyEvent) {
             // Restore full list
             app.filtered_indices = (0..app.sessions.len()).collect();
         }
-        KeyCode::Enter => {
-            // Apply search and return to normal (metadata fallback if cache not ready)
+        KeyCode::Enter if !app.search_cache_loading => {
+            // Apply search and return to normal (keep cache for reuse)
             let query = app.search_query.clone();
             let cache = &app.search_content_cache;
             let indices = filter::fuzzy_filter(&app.sessions, &query, cache);
             app.update_filtered_indices(indices);
-            app.clear_search_content_cache();
-            app.search_cache_loading = false;
             app.search_cache_receiver = None;
             app.mode = AppMode::Normal;
         }
@@ -573,28 +571,28 @@ mod tests {
     }
 
     #[test]
-    fn test_search_enter_applies_metadata_filter_while_cache_loading() {
+    fn test_search_enter_blocked_while_cache_loading() {
         let mut app = AppState::new(make_sessions(5));
         app.mode = AppMode::FuzzySearch;
         app.search_cache_loading = true;
-        // "project-2" matches project_display of session 2
         app.search_query = "project-2".into();
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        assert_eq!(app.mode, AppMode::Normal);
-        // Should filter using metadata fallback even when cache is loading
-        assert_eq!(app.filtered_indices, vec![2]);
+        // Enter should be ignored while cache is loading
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+        assert_eq!(app.search_query, "project-2");
+        // Filtered indices should remain unchanged
+        assert_eq!(app.filtered_indices, vec![0, 1, 2, 3, 4]);
     }
 
     #[test]
-    fn test_search_enter_no_match_while_cache_loading() {
+    fn test_search_enter_works_after_cache_loaded() {
         let mut app = AppState::new(make_sessions(5));
         app.mode = AppMode::FuzzySearch;
-        app.search_cache_loading = true;
-        app.search_query = "nonexistent".into();
+        app.search_cache_loading = false;
+        app.search_query = "project-2".into();
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        // Enter should work when cache is not loading
         assert_eq!(app.mode, AppMode::Normal);
-        // No metadata matches → empty filtered list
-        assert!(app.filtered_indices.is_empty());
     }
 
     #[test]
