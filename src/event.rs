@@ -143,6 +143,11 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         (KeyCode::Char('N'), _) => {
             app.jump_to_prev_match();
         }
+        (KeyCode::Char('c'), _) => {
+            app.clear_filters();
+            app.search_match_positions.clear();
+            app.search_match_current = None;
+        }
         (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
             app.toggle_help();
         }
@@ -564,6 +569,23 @@ mod tests {
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, None);
         assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_viewing_c_clears_search() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::Viewing;
+        app.search_query = "test".into();
+        app.filtered_indices = vec![0, 2];
+        app.search_match_positions = vec![(5, 0), (15, 0)];
+        app.search_match_current = Some(1);
+        handle_key(&mut app, make_key(KeyCode::Char('c'))).unwrap();
+        // Should clear search query and match state but stay in Viewing mode
+        assert_eq!(app.search_query, "");
+        assert!(app.search_match_positions.is_empty());
+        assert_eq!(app.search_match_current, None);
+        assert_eq!(app.filtered_indices.len(), 5);
+        assert_eq!(app.mode, AppMode::Viewing);
     }
 
     #[test]
