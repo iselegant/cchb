@@ -3,6 +3,7 @@ use crate::session::{self, ConversationMessage, SessionIndex};
 use chrono::{Days, Local};
 use ratatui::widgets::ListState;
 use std::sync::mpsc;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -72,6 +73,10 @@ pub struct AppState {
     pub pending_search_jump: Option<SearchJumpDirection>,
     /// The `selected_index` where cross-session navigation started, to detect full-cycle wrap.
     pub pending_search_jump_origin: Option<usize>,
+    /// True while the "Reloaded" indicator should be shown.
+    pub conversation_reloading: bool,
+    /// When the reload indicator was triggered (used to auto-dismiss after a short duration).
+    pub conversation_reload_at: Option<Instant>,
 }
 
 impl AppState {
@@ -106,6 +111,8 @@ impl AppState {
             search_match_current: None,
             pending_search_jump: None,
             pending_search_jump_origin: None,
+            conversation_reloading: false,
+            conversation_reload_at: None,
         }
     }
 
@@ -566,6 +573,24 @@ impl AppState {
         self.search_match_current = None;
         self.sync_list_state();
         true
+    }
+
+    /// Request reload of the current conversation. Sets the reload indicator and clears
+    /// loaded_session_id so the main loop will re-read the file.
+    pub fn request_reload_conversation(&mut self) {
+        self.loaded_session_id = None;
+        self.conversation_reloading = true;
+        self.conversation_reload_at = Some(Instant::now());
+    }
+
+    /// Clear the reload indicator after 500ms have elapsed.
+    pub fn check_reload_expired(&mut self) {
+        if let Some(at) = self.conversation_reload_at
+            && at.elapsed() >= std::time::Duration::from_millis(500)
+        {
+            self.conversation_reloading = false;
+            self.conversation_reload_at = None;
+        }
     }
 
     /// Request resuming the currently selected session. Sets the session ID/project path and quits.
@@ -1344,5 +1369,42 @@ mod tests {
         // Should detect we're back at origin and stop
         assert!(!needs_more);
         assert_eq!(app.pending_search_jump, None);
+    }
+
+    #[test]
+    fn test_request_reload_conversation_sets_flag() {
+        let mut app = AppState::new(make_sessions(3));
+        assert!(!app.conversation_reloading);
+        app.request_reload_conversation();
+        assert!(app.conversation_reloading);
+        assert!(app.conversation_reload_at.is_some());
+    }
+
+    #[test]
+    fn test_request_reload_conversation_clears_loaded_session_id() {
+        let mut app = AppState::new(make_sessions(3));
+        app.loaded_session_id = Some("sess-0".into());
+        app.request_reload_conversation();
+        assert_eq!(app.loaded_session_id, None);
+    }
+
+    #[test]
+    fn test_check_reload_expired_clears_flag() {
+        let mut app = AppState::new(make_sessions(3));
+        app.conversation_reloading = true;
+        app.conversation_reload_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(600));
+        app.check_reload_expired();
+        assert!(!app.conversation_reloading);
+        assert!(app.conversation_reload_at.is_none());
+    }
+
+    #[test]
+    fn test_check_reload_not_expired_keeps_flag() {
+        let mut app = AppState::new(make_sessions(3));
+        app.conversation_reloading = true;
+        app.conversation_reload_at = Some(std::time::Instant::now());
+        app.check_reload_expired();
+        assert!(app.conversation_reloading);
     }
 }
