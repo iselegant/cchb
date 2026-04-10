@@ -20,6 +20,30 @@ pub struct SessionIndex {
     pub git_branch: Option<String>,
     pub message_count: usize,
     pub file_path: PathBuf,
+    /// Pre-formatted date string for display ("YYYY-MM-DD HH:MM").
+    pub date_display: String,
+    /// Pre-formatted branch string for display ("(branch)"), or empty.
+    pub branch_display: String,
+    /// Truncated first prompt for display (max 60 chars).
+    pub prompt_preview: String,
+}
+
+impl SessionIndex {
+    /// Compute the display-only fields from the core fields.
+    pub fn with_display_fields(mut self) -> Self {
+        self.date_display = self.modified.format("%Y-%m-%d %H:%M").to_string();
+        self.branch_display = self
+            .git_branch
+            .as_ref()
+            .map(|b| format!("({b})"))
+            .unwrap_or_default();
+        self.prompt_preview = if self.first_prompt.is_empty() {
+            "(no prompt)".to_string()
+        } else {
+            self.first_prompt.chars().take(60).collect()
+        };
+        self
+    }
 }
 
 /// The type of a content block within an assistant message.
@@ -343,18 +367,24 @@ fn load_sessions_from_index(
             continue;
         }
 
-        sessions.push(SessionIndex {
-            session_id,
-            project_path: effective_project_path,
-            project_display: project_display.to_string(),
-            first_prompt,
-            summary: entry.summary,
-            created,
-            modified,
-            git_branch: entry.git_branch,
-            message_count,
-            file_path,
-        });
+        sessions.push(
+            SessionIndex {
+                session_id,
+                project_path: effective_project_path,
+                project_display: project_display.to_string(),
+                first_prompt,
+                summary: entry.summary,
+                created,
+                modified,
+                git_branch: entry.git_branch,
+                message_count,
+                file_path,
+                date_display: String::new(),
+                branch_display: String::new(),
+                prompt_preview: String::new(),
+            }
+            .with_display_fields(),
+        );
     }
 
     Ok(sessions)
@@ -458,18 +488,24 @@ fn load_sessions_from_jsonl_scan(
             continue;
         }
 
-        sessions.push(SessionIndex {
-            session_id,
-            project_display: project_display_name(&effective_project_path),
-            project_path: effective_project_path,
-            first_prompt,
-            summary: None,
-            created,
-            modified,
-            git_branch,
-            message_count,
-            file_path: path,
-        });
+        sessions.push(
+            SessionIndex {
+                session_id,
+                project_display: project_display_name(&effective_project_path),
+                project_path: effective_project_path,
+                first_prompt,
+                summary: None,
+                created,
+                modified,
+                git_branch,
+                message_count,
+                file_path: path,
+                date_display: String::new(),
+                branch_display: String::new(),
+                prompt_preview: String::new(),
+            }
+            .with_display_fields(),
+        );
     }
 
     Ok(sessions)
