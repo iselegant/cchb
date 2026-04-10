@@ -275,7 +275,7 @@ impl AppState {
                     cache.push(String::new());
                     continue;
                 }
-                let text = session::extract_searchable_text(path);
+                let text = session::extract_searchable_text(path).to_lowercase();
                 total_bytes = total_bytes.saturating_add(text.len());
                 cache.push(text);
             }
