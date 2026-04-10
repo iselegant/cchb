@@ -256,19 +256,13 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         theme.border_inactive
     };
 
-    // Clone session metadata before mutably borrowing app later
-    let session_meta: Option<(String, String, Option<String>)> =
-        app.selected_session().map(|session| {
-            let session_id = session.session_id.clone();
-            let project_path = session.project_path.clone();
-            let branch = session.git_branch.clone();
-            (session_id, project_path, branch)
-        });
-
     // Split area: header (5 lines = border + 3 content lines + border) + conversation body
     let chunks = Layout::vertical([Constraint::Length(5), Constraint::Min(1)]).split(area);
 
-    // Render session header pane
+    // Render session header pane.
+    // Borrow session data immutably and render the header widget here so the borrow
+    // is dropped before any mutable access to `app` later.  This avoids cloning
+    // session_id / project_path / git_branch every frame.
     let conv_title = if app.active_panel == Panel::ConversationView {
         Line::from(Span::styled(" ▶ Conversation ", theme.border_active))
     } else {
@@ -279,19 +273,22 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    if let Some((session_id, project_path, branch)) = &session_meta {
+    if let Some(session) = app.selected_session() {
         let label_style = Style::default().fg(Color::Gray);
         let mut lines = vec![
             Line::from(vec![
                 Span::styled("ID:        ", label_style),
-                Span::styled(session_id.as_str(), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    session.session_id.as_str(),
+                    Style::default().fg(Color::Yellow),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Directory: ", label_style),
-                Span::styled(project_path.as_str(), theme.session_project),
+                Span::styled(session.project_path.as_str(), theme.session_project),
             ]),
         ];
-        lines.push(if let Some(branch) = branch {
+        lines.push(if let Some(branch) = &session.git_branch {
             Line::from(vec![
                 Span::styled("Branch:    ", label_style),
                 Span::styled(branch.as_str(), theme.session_branch),

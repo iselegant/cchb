@@ -536,7 +536,7 @@ pub fn wrap_line(line: Line<'static>, max_width: usize) -> Vec<Line<'static>> {
 
     for span in line.spans {
         let style = span.style;
-        let full_text: String = span.content.to_string();
+        let full_text: String = span.content.into_owned();
         let span_total_w = full_text.width();
         let mut offset = 0;
         let mut consumed_w: usize = 0;
