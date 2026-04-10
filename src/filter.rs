@@ -18,11 +18,11 @@ pub fn fuzzy_filter(
         .iter()
         .enumerate()
         .filter(|(i, session)| {
-            // Try content cache first
+            // Try content cache first (already lowercased at build time)
             if let Some(cached) = content_cache.get(*i)
                 && !cached.is_empty()
             {
-                return cached.to_lowercase().contains(&query_lower);
+                return cached.contains(&query_lower);
             }
             // Fallback: match against session metadata
             session.first_prompt.to_lowercase().contains(&query_lower)
@@ -169,12 +169,13 @@ mod tests {
 
     // --- fuzzy_filter tests (substring match against content cache) ---
 
+    /// Returns pre-lowercased content cache (as built by the background thread).
     fn sample_caches() -> Vec<String> {
         vec![
-            "Run terraform plan for VPC setup".into(),        // s1
-            "Fix login bug in authentication flow".into(),    // s2
-            "Add health check endpoint to API".into(),        // s3
-            "Update VPC configuration with terraform".into(), // s4
+            "run terraform plan for vpc setup".into(),        // s1
+            "fix login bug in authentication flow".into(),    // s2
+            "add health check endpoint to api".into(),        // s3
+            "update vpc configuration with terraform".into(), // s4
         ]
     }
 
@@ -427,6 +428,21 @@ mod tests {
         let cache = vec![session::extract_searchable_text(&sessions[0].file_path)];
         let result = fuzzy_filter(&sessions, "zzzzz", &cache);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_filter_cache_is_pre_lowercased() {
+        let sessions = sample_sessions();
+        // Cache content is already lowercased (as built by the background thread)
+        let cache = vec![
+            "run terraform plan for vpc setup".into(),
+            "fix login bug in authentication flow".into(),
+            "add health check endpoint to api".into(),
+            "update vpc configuration with terraform".into(),
+        ];
+        // Case-insensitive query should still match pre-lowercased cache
+        let result = fuzzy_filter(&sessions, "TERRAFORM", &cache);
+        assert_eq!(result, vec![0, 3]);
     }
 
     #[test]
