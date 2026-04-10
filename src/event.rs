@@ -280,13 +280,11 @@ fn handle_search_key(app: &mut AppState, key: KeyEvent) {
             app.filtered_indices = (0..app.sessions.len()).collect();
         }
         KeyCode::Enter => {
-            // Apply search and return to normal
-            if !app.search_cache_loading {
-                let query = app.search_query.clone();
-                let cache = &app.search_content_cache;
-                let indices = filter::fuzzy_filter(&app.sessions, &query, cache);
-                app.update_filtered_indices(indices);
-            }
+            // Apply search and return to normal (metadata fallback if cache not ready)
+            let query = app.search_query.clone();
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &query, cache);
+            app.update_filtered_indices(indices);
             app.clear_search_content_cache();
             app.search_cache_loading = false;
             app.search_cache_receiver = None;
@@ -294,21 +292,17 @@ fn handle_search_key(app: &mut AppState, key: KeyEvent) {
         }
         KeyCode::Backspace => {
             app.search_query.pop();
-            // Live filter (skip while cache is loading)
-            if !app.search_cache_loading {
-                let cache = &app.search_content_cache;
-                let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
-                app.update_filtered_indices(indices);
-            }
+            // Live filter (uses metadata fallback if cache not ready)
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
+            app.update_filtered_indices(indices);
         }
         KeyCode::Char(c) => {
             app.search_query.push(c);
-            // Live filter (skip while cache is loading)
-            if !app.search_cache_loading {
-                let cache = &app.search_content_cache;
-                let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
-                app.update_filtered_indices(indices);
-            }
+            // Live filter (uses metadata fallback if cache not ready)
+            let cache = &app.search_content_cache;
+            let indices = filter::fuzzy_filter(&app.sessions, &app.search_query, cache);
+            app.update_filtered_indices(indices);
         }
         _ => {}
     }
@@ -579,15 +573,28 @@ mod tests {
     }
 
     #[test]
-    fn test_search_enter_preserves_list_while_cache_loading() {
+    fn test_search_enter_applies_metadata_filter_while_cache_loading() {
         let mut app = AppState::new(make_sessions(5));
         app.mode = AppMode::FuzzySearch;
         app.search_cache_loading = true;
-        app.search_query = "test".into();
+        // "project-2" matches project_display of session 2
+        app.search_query = "project-2".into();
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        // Should return to Normal without clearing the list
         assert_eq!(app.mode, AppMode::Normal);
-        assert_eq!(app.filtered_indices.len(), 5);
+        // Should filter using metadata fallback even when cache is loading
+        assert_eq!(app.filtered_indices, vec![2]);
+    }
+
+    #[test]
+    fn test_search_enter_no_match_while_cache_loading() {
+        let mut app = AppState::new(make_sessions(5));
+        app.mode = AppMode::FuzzySearch;
+        app.search_cache_loading = true;
+        app.search_query = "nonexistent".into();
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+        // No metadata matches → empty filtered list
+        assert!(app.filtered_indices.is_empty());
     }
 
     #[test]
