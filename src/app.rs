@@ -52,6 +52,11 @@ pub struct AppState {
     /// Cached searchable text per session, built on search entry, cleared on exit.
     /// Each entry corresponds to sessions[i]. Empty string means not cached (e.g. over size limit).
     pub search_content_cache: Vec<String>,
+    /// All search match positions as (line_index, occurrence_index_within_line).
+    /// Recomputed each render cycle by the UI layer.
+    pub search_match_positions: Vec<(usize, usize)>,
+    /// Current index into `search_match_positions` (None when no navigation has occurred).
+    pub search_match_current: Option<usize>,
 }
 
 impl AppState {
@@ -80,6 +85,8 @@ impl AppState {
             resume_project_path: None,
             items_per_page: 5,
             search_content_cache: Vec::new(),
+            search_match_positions: Vec::new(),
+            search_match_current: None,
         }
     }
 
@@ -347,6 +354,33 @@ impl AppState {
             self.conversation_scroll = 0;
             self.sync_list_state();
         }
+    }
+
+    /// Jump to the next search match line, wrapping around from last to first.
+    pub fn jump_to_next_match(&mut self) {
+        if self.search_match_positions.is_empty() {
+            return;
+        }
+        let next = match self.search_match_current {
+            Some(idx) => (idx + 1) % self.search_match_positions.len(),
+            None => 0,
+        };
+        self.search_match_current = Some(next);
+        self.conversation_scroll = self.search_match_positions[next].0;
+    }
+
+    /// Jump to the previous search match occurrence, wrapping around from first to last.
+    pub fn jump_to_prev_match(&mut self) {
+        if self.search_match_positions.is_empty() {
+            return;
+        }
+        let prev = match self.search_match_current {
+            Some(0) => self.search_match_positions.len() - 1,
+            Some(idx) => idx - 1,
+            None => self.search_match_positions.len() - 1,
+        };
+        self.search_match_current = Some(prev);
+        self.conversation_scroll = self.search_match_positions[prev].0;
     }
 
     /// Request resuming the currently selected session. Sets the session ID/project path and quits.
@@ -830,6 +864,74 @@ mod tests {
         app.selected_index = 3;
         app.page_up();
         assert_eq!(app.selected_index, 0); // clamped to 0
+    }
+
+    #[test]
+    fn test_jump_to_next_match_empty() {
+        let mut app = AppState::new(make_sessions(3));
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, None);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_jump_to_next_match_single() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_match_positions = vec![(10, 0)];
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 10);
+        // Wrap around
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 10);
+    }
+
+    #[test]
+    fn test_jump_to_next_match_multiple() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 5);
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.conversation_scroll, 15);
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(2));
+        assert_eq!(app.conversation_scroll, 25);
+        // Wrap around
+        app.jump_to_next_match();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 5);
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_empty() {
+        let mut app = AppState::new(make_sessions(3));
+        app.jump_to_prev_match();
+        assert_eq!(app.search_match_current, None);
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_jump_to_prev_match_multiple() {
+        let mut app = AppState::new(make_sessions(3));
+        app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
+        // First call without current goes to last
+        app.jump_to_prev_match();
+        assert_eq!(app.search_match_current, Some(2));
+        assert_eq!(app.conversation_scroll, 25);
+        app.jump_to_prev_match();
+        assert_eq!(app.search_match_current, Some(1));
+        assert_eq!(app.conversation_scroll, 15);
+        app.jump_to_prev_match();
+        assert_eq!(app.search_match_current, Some(0));
+        assert_eq!(app.conversation_scroll, 5);
+        // Wrap around
+        app.jump_to_prev_match();
+        assert_eq!(app.search_match_current, Some(2));
+        assert_eq!(app.conversation_scroll, 25);
     }
 
     #[test]

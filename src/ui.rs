@@ -238,11 +238,54 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     }
 
     let lines = if !app.search_query.is_empty() {
-        lines
+        let query_lower = app.search_query.to_lowercase();
+        let mut match_positions: Vec<(usize, usize)> = Vec::new();
+        // Collect all (line_index, occurrence_index) pairs
+        for (i, line) in lines.iter().enumerate() {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            let text_lower = text.to_lowercase();
+            let mut occ = 0;
+            let mut start = 0;
+            while let Some(pos) = text_lower[start..].find(&query_lower) {
+                match_positions.push((i, occ));
+                occ += 1;
+                start += pos + query_lower.len();
+            }
+        }
+        app.search_match_positions = match_positions;
+        // Reset current index if it's out of bounds
+        if let Some(idx) = app.search_match_current
+            && idx >= app.search_match_positions.len()
+        {
+            app.search_match_current = None;
+        }
+        // Determine which line has the current match and which occurrence within it
+        let current_highlight: Option<(usize, usize)> = app
+            .search_match_current
+            .map(|idx| app.search_match_positions[idx]);
+        let lines: Vec<Line> = lines
             .into_iter()
-            .map(|line| highlight_line(line, &app.search_query, theme.search_highlight))
-            .collect()
+            .enumerate()
+            .map(|(i, line)| {
+                if let Some((cur_line, cur_occ)) = current_highlight
+                    && cur_line == i
+                {
+                    highlight_line_with_current(
+                        line,
+                        &app.search_query,
+                        theme.search_highlight,
+                        theme.search_highlight_current,
+                        cur_occ,
+                    )
+                } else {
+                    highlight_line(line, &app.search_query, theme.search_highlight)
+                }
+            })
+            .collect();
+        lines
     } else {
+        app.search_match_positions.clear();
+        app.search_match_current = None;
         lines
     };
 
@@ -271,7 +314,14 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
     };
 
     let search_indicator = if !app.search_query.is_empty() {
-        format!("  [search: {}]", app.search_query)
+        let match_info = if app.search_match_positions.is_empty() {
+            String::new()
+        } else if let Some(idx) = app.search_match_current {
+            format!(" {}/{}", idx + 1, app.search_match_positions.len())
+        } else {
+            format!(" {}", app.search_match_positions.len())
+        };
+        format!("  [search: {}{}]", app.search_query, match_info)
     } else {
         String::new()
     };
@@ -356,7 +406,7 @@ fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) 
 }
 
 fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
-    let area = centered_rect(50, 19, frame.area());
+    let area = centered_rect(50, 20, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -377,6 +427,7 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
         help_line("c", "Clear all filters", theme),
         help_line("r", "Reload sessions", theme),
         help_line("[ / ]", "Prev / Next session (viewing)", theme),
+        help_line("n / N", "Next / Prev search match (viewing)", theme),
         Line::from(""),
         Line::from(Span::styled(" Press any key to close", theme.help_desc)),
     ];
@@ -418,6 +469,58 @@ fn highlight_line<'a>(line: Line<'a>, query: &str, highlight_style: Style) -> Li
             }
             let end = start + query.len();
             result_spans.push(Span::styled(text[start..end].to_string(), highlight_style));
+            pos = end;
+        }
+
+        if has_match {
+            if pos < text.len() {
+                result_spans.push(Span::styled(text[pos..].to_string(), style));
+            }
+        } else {
+            result_spans.push(Span::styled(text, style));
+        }
+    }
+
+    Line::from(result_spans)
+}
+
+/// Highlight all occurrences of `query`, using `current_style` for the `current_occ`-th
+/// occurrence and `highlight_style` for all others.
+fn highlight_line_with_current<'a>(
+    line: Line<'a>,
+    query: &str,
+    highlight_style: Style,
+    current_style: Style,
+    current_occ: usize,
+) -> Line<'a> {
+    if query.is_empty() {
+        return line;
+    }
+    let query_lower = query.to_lowercase();
+    let mut result_spans: Vec<Span<'a>> = Vec::new();
+    let mut global_occ: usize = 0;
+
+    for span in line.spans {
+        let text = span.content.to_string();
+        let text_lower = text.to_lowercase();
+        let style = span.style;
+
+        let mut pos = 0;
+        let mut has_match = false;
+
+        for (start, _) in text_lower.match_indices(&query_lower) {
+            has_match = true;
+            if start > pos {
+                result_spans.push(Span::styled(text[pos..start].to_string(), style));
+            }
+            let end = start + query.len();
+            let hl = if global_occ == current_occ {
+                current_style
+            } else {
+                highlight_style
+            };
+            result_spans.push(Span::styled(text[start..end].to_string(), hl));
+            global_occ += 1;
             pos = end;
         }
 
