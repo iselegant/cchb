@@ -538,10 +538,10 @@ mod tests {
         app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, Some(0));
-        assert_eq!(app.conversation_scroll, 5);
+        assert_eq!(app.conversation_scroll, 0); // 5 - 5 = 0 (saturating)
         handle_key(&mut app, make_key(KeyCode::Char('n'))).unwrap();
         assert_eq!(app.search_match_current, Some(1));
-        assert_eq!(app.conversation_scroll, 15);
+        assert_eq!(app.conversation_scroll, 10); // 15 - 5 = 10
     }
 
     #[test]
@@ -551,10 +551,10 @@ mod tests {
         app.search_match_positions = vec![(5, 0), (15, 0), (25, 0)];
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
         assert_eq!(app.search_match_current, Some(2));
-        assert_eq!(app.conversation_scroll, 25);
+        assert_eq!(app.conversation_scroll, 20); // 25 - 5 = 20
         handle_key(&mut app, make_key(KeyCode::Char('N'))).unwrap();
         assert_eq!(app.search_match_current, Some(1));
-        assert_eq!(app.conversation_scroll, 15);
+        assert_eq!(app.conversation_scroll, 10); // 15 - 5 = 10
     }
 
     #[test]
