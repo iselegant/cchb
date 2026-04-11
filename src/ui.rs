@@ -547,10 +547,10 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &
             " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  h:help  Esc/q:back "
         }
         (false, true) => {
-            " Tab/Enter:panel  Enter/l:open  r:resume  f|/:search  d:date  c:clear  h:help  Esc/q:quit "
+            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  c:clear  h:help  Esc/q:quit "
         }
         (false, false) => {
-            " Tab/Enter:panel  Enter/l:open  r:resume  f|/:search  d:date  h:help  Esc/q:quit "
+            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  h:help  Esc/q:quit "
         }
     };
 

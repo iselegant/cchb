@@ -201,7 +201,7 @@ Each JSONL file consists of one message per line:
 | `Tab` | Normal/Viewing | Toggle focus between left/right panels |
 | `/` | Normal/Viewing | Fuzzy search (same as `f` key) |
 | `c` | Normal | Clear all filters |
-| `l` | Viewing | Reload conversation (re-read JSONL file) |
+| `l` | Normal/Viewing | Reload conversation (re-read JSONL file) |
 | `R` (Shift+r) | Normal | Reload session list |
 | `[` / `]` | Viewing | Navigate to previous/next session without returning to list |
 | `n` / `N` | Normal/Viewing | Jump to next/previous search match — navigates within session matches first, then crosses to next/previous session when at the boundary. In Normal mode with Session panel, auto-enters Viewing mode. Wraps around session list. |

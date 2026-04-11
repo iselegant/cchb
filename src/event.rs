@@ -89,7 +89,7 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 app.half_page_up(app.items_per_page * 2);
             }
         }
-        (KeyCode::Enter, _) | (KeyCode::Char('l'), _) => {
+        (KeyCode::Enter, _) => {
             if app.active_panel == Panel::ConversationView {
                 app.toggle_panel();
             } else if let Some(session) = app.selected_session() {
@@ -139,6 +139,9 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         }
         (KeyCode::Char('R'), _) => {
             // Reload is handled by main loop since it needs claude_dir path
+        }
+        (KeyCode::Char('l'), _) => {
+            app.request_reload_conversation();
         }
         (KeyCode::Tab, _) => {
             app.toggle_panel();
@@ -718,6 +721,17 @@ mod tests {
         assert_eq!(app.active_panel, Panel::SessionList);
         // Should NOT enter viewing mode — just toggle panel
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_l_reloads_conversation_in_normal_mode() {
+        let mut app = AppState::new(make_sessions(3));
+        assert_eq!(app.mode, AppMode::Normal);
+        handle_key(&mut app, make_key(KeyCode::Char('l'))).unwrap();
+        // l should reload conversation, not open session
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(app.conversation_reloading);
+        assert_eq!(app.loaded_session_id, None);
     }
 
     #[test]
