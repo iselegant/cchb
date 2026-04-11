@@ -600,6 +600,16 @@ fn render_search_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) {
     let input = Paragraph::new(Line::from(spans)).block(block);
 
     frame.render_widget(input, area);
+
+    // Position the terminal cursor at the text input location so that
+    // IME candidate windows (e.g. Japanese input) appear near the search box
+    // instead of at the default terminal cursor position (bottom-right).
+    // inner() accounts for the 1-cell border on each side.
+    let inner = area.inner(ratatui::layout::Margin::new(1, 1));
+    let query_width = unicode_width::UnicodeWidthStr::width(app.search_query.as_str()) as u16;
+    let cursor_x = inner.x + 2 + query_width; // 2 = "> " prefix
+    let cursor_y = inner.y;
+    frame.set_cursor_position((cursor_x, cursor_y));
 }
 
 fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) {
