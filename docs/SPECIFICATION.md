@@ -177,6 +177,7 @@ Each JSONL file consists of one message per line:
 - `Enter` to confirm, `Esc` to cancel
 - **Active search indicator**: When a search query is active after confirmation, the status bar shows `[search: <query> | all: <N> | conv: <current>/<total>]` where `all` is the total keyword occurrences across all sessions and `conv` is the current match position within the open conversation
 - **Conversation highlight**: Matching substrings in the conversation view are highlighted (case-insensitive, black text on yellow background)
+- **Conversation match count**: The `conv` count in the status bar reflects the navigable matches in the rendered conversation view, which may differ slightly from raw content counts due to word wrapping
 
 ### FR-5: Date Range Filter (d key)
 
