@@ -34,6 +34,35 @@ case "$file" in
     fi
     ;;
 
+  *.sh)
+    # Diagnostic: shellcheck
+    if command -v shellcheck >/dev/null 2>&1; then
+      sc_out="$(shellcheck -f gcc "$file" 2>&1 | head -15)" || true
+      [ -n "${sc_out:-}" ] && diagnostics="$sc_out"
+    fi
+    ;;
+
+  .github/workflows/*.yml|.github/workflows/*.yaml)
+    # Diagnostic: actionlint (single file)
+    if command -v actionlint >/dev/null 2>&1; then
+      al_out="$(actionlint "$file" 2>&1 | head -15)" || true
+      [ -n "${al_out:-}" ] && diagnostics="$al_out"
+    fi
+    # Diagnostic: yamllint
+    if command -v yamllint >/dev/null 2>&1; then
+      yl_out="$(yamllint -f parsable "$file" 2>&1 | head -15)" || true
+      [ -n "${yl_out:-}" ] && diagnostics="${diagnostics:+${diagnostics}\n}${yl_out}"
+    fi
+    ;;
+
+  *.yml|*.yaml)
+    # Diagnostic: yamllint
+    if command -v yamllint >/dev/null 2>&1; then
+      yl_out="$(yamllint -f parsable "$file" 2>&1 | head -15)" || true
+      [ -n "${yl_out:-}" ] && diagnostics="$yl_out"
+    fi
+    ;;
+
   *) exit 0 ;;
 esac
 

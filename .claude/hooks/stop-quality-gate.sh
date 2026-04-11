@@ -41,3 +41,48 @@ if echo "$changed" | grep -q '\.rs$'; then
     fi
   fi
 fi
+
+# --- Shell script checks (shellcheck) ---
+if echo "$changed" | grep -q '\.sh$'; then
+  if command -v shellcheck >/dev/null 2>&1; then
+    sh_errors=""
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      sc_out="$(shellcheck -f gcc "$f" 2>&1)" || true
+      [ -n "$sc_out" ] && sh_errors="${sh_errors}${sc_out}\n"
+    done <<< "$(echo "$changed" | grep '\.sh$')"
+
+    if [ -n "$sh_errors" ]; then
+      printf '=== shellcheck ===\n%b\n' "$sh_errors"
+      exit 1
+    fi
+  fi
+fi
+
+# --- GitHub Actions checks (actionlint) ---
+if echo "$changed" | grep -q '\.github/workflows/.*\.y'; then
+  if command -v actionlint >/dev/null 2>&1; then
+    al_out="$(actionlint 2>&1 | tail -20)" || true
+    if [ -n "$al_out" ]; then
+      printf '=== actionlint ===\n%s\n' "$al_out"
+      exit 1
+    fi
+  fi
+fi
+
+# --- YAML checks (yamllint) ---
+if echo "$changed" | grep -qE '\.(yml|yaml)$'; then
+  if command -v yamllint >/dev/null 2>&1; then
+    yl_errors=""
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      yl_out="$(yamllint -f parsable "$f" 2>&1)" || true
+      [ -n "$yl_out" ] && yl_errors="${yl_errors}${yl_out}\n"
+    done <<< "$(echo "$changed" | grep -E '\.(yml|yaml)$')"
+
+    if [ -n "$yl_errors" ]; then
+      printf '=== yamllint ===\n%b\n' "$yl_errors"
+      exit 1
+    fi
+  fi
+fi
