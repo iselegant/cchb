@@ -1,14 +1,7 @@
-mod app;
-mod color;
-mod event;
-mod filter;
-mod markdown;
-mod session;
-mod ui;
-
 use anyhow::{Context, Result};
-use app::AppState;
-use color::Theme;
+use cchb::app::{self, AppState};
+use cchb::color::Theme;
+use cchb::{event, session, ui};
 use crossterm::ExecutableCommand;
 use crossterm::event::{Event, KeyEventKind};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -46,30 +39,6 @@ fn restore_terminal() {
     let _ = io::stdout().execute(LeaveAlternateScreen);
 }
 
-/// Load conversation for the currently focused session if not already loaded.
-fn maybe_load_focused_conversation(app: &mut AppState) {
-    let current_session_id = app.selected_session().map(|s| s.session_id.clone());
-
-    if current_session_id == app.loaded_session_id {
-        return; // already loaded
-    }
-
-    if let Some(sess) = app.selected_session() {
-        let path = sess.file_path.clone();
-        if let Ok(messages) = session::load_conversation(&path) {
-            let display = session::display_messages(messages);
-            app.conversation = display;
-        } else {
-            app.conversation.clear();
-        }
-        app.loaded_session_id = current_session_id;
-        app.conversation_scroll = 0;
-    } else {
-        app.conversation.clear();
-        app.loaded_session_id = None;
-    }
-}
-
 fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut AppState,
@@ -77,7 +46,7 @@ fn run_app(
     claude_dir: &Path,
 ) -> Result<()> {
     // Load initial conversation
-    maybe_load_focused_conversation(app);
+    app.maybe_load_focused_conversation();
 
     loop {
         terminal.draw(|frame| {
@@ -86,7 +55,7 @@ fn run_app(
 
         // Resolve pending cross-session search jumps after render populates match positions.
         while app.resolve_pending_search_jump() {
-            maybe_load_focused_conversation(app);
+            app.maybe_load_focused_conversation();
             terminal.draw(|frame| {
                 ui::render(frame, app, theme);
             })?;
@@ -94,7 +63,7 @@ fn run_app(
 
         // Poll for background session discovery completion.
         if app.poll_session_loading() {
-            maybe_load_focused_conversation(app);
+            app.maybe_load_focused_conversation();
         }
 
         // Poll for background search cache completion.
@@ -133,7 +102,7 @@ fn run_app(
             event::handle_key(app, key)?;
 
             // Auto-load conversation when focus changes
-            maybe_load_focused_conversation(app);
+            app.maybe_load_focused_conversation();
 
             if app.should_quit {
                 break;

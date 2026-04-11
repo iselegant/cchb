@@ -950,6 +950,93 @@ mod tests {
         assert_eq!(size, 0);
     }
 
+    // --- highlight_line_with_current tests ---
+
+    fn cur_style() -> Style {
+        Style::default().fg(Color::Black).bg(Color::Indexed(208))
+    }
+
+    #[test]
+    fn test_highlight_line_with_current_empty_query() {
+        let line = Line::from("hello world");
+        let result = highlight_line_with_current(line, "", hl_style(), cur_style(), 0);
+        assert_eq!(result.spans.len(), 1);
+        assert_eq!(result.spans[0].content.as_ref(), "hello world");
+    }
+
+    #[test]
+    fn test_highlight_line_with_current_no_match() {
+        let line = Line::from("hello world");
+        let result = highlight_line_with_current(line, "xyz", hl_style(), cur_style(), 0);
+        assert_eq!(result.spans.len(), 1);
+        assert_eq!(result.spans[0].content.as_ref(), "hello world");
+    }
+
+    #[test]
+    fn test_highlight_line_with_current_single_match_current() {
+        let line = Line::from("hello world");
+        let result = highlight_line_with_current(line, "world", hl_style(), cur_style(), 0);
+        assert_eq!(result.spans.len(), 2);
+        assert_eq!(result.spans[0].content.as_ref(), "hello ");
+        assert_eq!(result.spans[1].content.as_ref(), "world");
+        assert_eq!(result.spans[1].style, cur_style());
+    }
+
+    #[test]
+    fn test_highlight_line_with_current_multiple_occurrences() {
+        let line = Line::from("foo bar foo baz foo");
+        let result = highlight_line_with_current(line, "foo", hl_style(), cur_style(), 1);
+        // foo(0) bar foo(1=current) baz foo(2)
+        assert_eq!(result.spans.len(), 5);
+        assert_eq!(result.spans[0].style, hl_style()); // foo #0
+        assert_eq!(result.spans[2].style, cur_style()); // foo #1 (current)
+        assert_eq!(result.spans[4].style, hl_style()); // foo #2
+    }
+
+    #[test]
+    fn test_highlight_line_with_current_case_insensitive() {
+        let line = Line::from("Hello HELLO hello");
+        let result = highlight_line_with_current(line, "hello", hl_style(), cur_style(), 2);
+        assert_eq!(result.spans.len(), 5);
+        assert_eq!(result.spans[0].style, hl_style()); // Hello
+        assert_eq!(result.spans[2].style, hl_style()); // HELLO
+        assert_eq!(result.spans[4].style, cur_style()); // hello (current)
+    }
+
+    // --- centered_rect tests ---
+
+    #[test]
+    fn test_centered_rect_standard() {
+        let area = Rect::new(0, 0, 100, 50);
+        let result = centered_rect(50, 3, area);
+        assert_eq!(result.height, 3);
+        // Horizontal centering: 25% left margin of 100 = 25
+        assert!(result.x >= 20 && result.x <= 30, "x={}", result.x);
+        assert!(
+            result.width >= 45 && result.width <= 55,
+            "w={}",
+            result.width
+        );
+    }
+
+    #[test]
+    fn test_centered_rect_full_width() {
+        let area = Rect::new(0, 0, 80, 24);
+        let result = centered_rect(100, 5, area);
+        assert_eq!(result.height, 5);
+        // 100% width → x should be 0 and width should be full
+        assert_eq!(result.x, 0);
+        assert_eq!(result.width, 80);
+    }
+
+    #[test]
+    fn test_centered_rect_small_area() {
+        let area = Rect::new(0, 0, 20, 5);
+        let result = centered_rect(50, 3, area);
+        assert_eq!(result.height, 3);
+        assert!(result.width > 0);
+    }
+
     #[test]
     fn test_scrollbar_geometry_conversation_view_scenario() {
         // Simulate conversation: track=40, total_lines=200, visible=40
