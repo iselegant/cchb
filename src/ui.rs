@@ -195,6 +195,17 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
     let lines_per_item = 4; // project+branch, date, preview, blank
     app.items_per_page = (inner_height / lines_per_item).max(1);
 
+    if app.session_loading {
+        let loading_block = block.clone();
+        let loading_text = Paragraph::new(Line::from(Span::styled(
+            "  Loading sessions...",
+            theme.session_date,
+        )))
+        .block(loading_block);
+        frame.render_widget(loading_text, area);
+        return;
+    }
+
     let items: Vec<ListItem> = app
         .filtered_indices
         .iter()
@@ -486,7 +497,9 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
     let session_count = app.filtered_indices.len();
     let total = app.sessions.len();
 
-    let status_text = if session_count == total {
+    let status_text = if app.session_loading {
+        " Loading...".to_string()
+    } else if session_count == total {
         format!(" {total} sessions")
     } else {
         format!(" {session_count}/{total} sessions")

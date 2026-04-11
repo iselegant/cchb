@@ -16,6 +16,7 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::Duration;
 
 fn get_claude_dir() -> Result<PathBuf> {
@@ -91,6 +92,11 @@ fn run_app(
             })?;
         }
 
+        // Poll for background session discovery completion.
+        if app.poll_session_loading() {
+            maybe_load_focused_conversation(app);
+        }
+
         // Poll for background search cache completion.
         app.poll_search_cache();
 
@@ -146,16 +152,17 @@ fn main() -> Result<()> {
     }));
 
     let claude_dir = get_claude_dir()?;
-    let sessions = session::discover_sessions(&claude_dir)?;
 
-    if sessions.is_empty() {
-        println!("No Claude Code sessions found.");
-        return Ok(());
-    }
+    // Spawn session discovery in a background thread so the UI appears immediately.
+    let (tx, rx) = mpsc::channel();
+    let claude_dir_bg = claude_dir.clone();
+    std::thread::spawn(move || {
+        let sessions = session::discover_sessions(&claude_dir_bg).unwrap_or_default();
+        let _ = tx.send(sessions);
+    });
 
-    println!("Found {} sessions. Loading...", sessions.len());
-
-    let mut app = AppState::new(sessions);
+    let mut app = AppState::loading();
+    app.session_receiver = Some(rx);
     let theme = Theme::default_theme();
 
     let mut terminal = setup_terminal()?;

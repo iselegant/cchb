@@ -90,6 +90,10 @@ pub struct AppState {
     /// Cached lowercased search query. Recomputed only when `search_query` changes.
     search_query_lower_src: String,
     search_query_lower_val: String,
+    /// True while the background thread is discovering sessions at startup.
+    pub session_loading: bool,
+    /// Receiver for the background session-discovery thread result.
+    pub session_receiver: Option<mpsc::Receiver<Vec<SessionIndex>>>,
 }
 
 impl AppState {
@@ -132,7 +136,35 @@ impl AppState {
             search_match_cache_key: (String::new(), (None, 0)),
             search_query_lower_src: String::new(),
             search_query_lower_val: String::new(),
+            session_loading: false,
+            session_receiver: None,
         }
+    }
+
+    /// Create an AppState in loading mode (empty sessions, waiting for background discovery).
+    pub fn loading() -> Self {
+        let mut state = Self::new(Vec::new());
+        state.session_loading = true;
+        state
+    }
+
+    /// Poll for background session discovery completion. Returns true if sessions were received.
+    pub fn poll_session_loading(&mut self) -> bool {
+        if let Some(rx) = &self.session_receiver
+            && let Ok(sessions) = rx.try_recv()
+        {
+            let filtered_indices: Vec<usize> = (0..sessions.len()).collect();
+            self.sessions = sessions;
+            self.filtered_indices = filtered_indices;
+            self.selected_index = 0;
+            if !self.sessions.is_empty() {
+                self.list_state.select(Some(0));
+            }
+            self.session_loading = false;
+            self.session_receiver = None;
+            return true;
+        }
+        false
     }
 
     /// Return the cached lowercased search query, recomputing only when `search_query` changed.
@@ -1614,5 +1646,67 @@ mod tests {
         app.cancel_search();
         // Cache should be preserved for reuse on next search entry
         assert_eq!(app.search_content_cache.len(), 3);
+    }
+
+    #[test]
+    fn test_loading_initial_state() {
+        let app = AppState::loading();
+        assert!(app.session_loading);
+        assert!(app.sessions.is_empty());
+        assert!(app.filtered_indices.is_empty());
+        assert!(app.selected_session().is_none());
+    }
+
+    #[test]
+    fn test_poll_session_loading_receives_sessions() {
+        let mut app = AppState::loading();
+        let (tx, rx) = mpsc::channel();
+        app.session_receiver = Some(rx);
+
+        let sessions = make_sessions(3);
+        tx.send(sessions).unwrap();
+
+        let ready = app.poll_session_loading();
+        assert!(ready);
+        assert!(!app.session_loading);
+        assert!(app.session_receiver.is_none());
+        assert_eq!(app.sessions.len(), 3);
+        assert_eq!(app.filtered_indices.len(), 3);
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_poll_session_loading_not_ready() {
+        let mut app = AppState::loading();
+        let (_tx, rx) = mpsc::channel::<Vec<SessionIndex>>();
+        app.session_receiver = Some(rx);
+
+        let ready = app.poll_session_loading();
+        assert!(!ready);
+        assert!(app.session_loading);
+        assert!(app.session_receiver.is_some());
+    }
+
+    #[test]
+    fn test_poll_session_loading_no_receiver() {
+        let mut app = AppState::new(make_sessions(3));
+        app.session_loading = false;
+        let ready = app.poll_session_loading();
+        assert!(!ready);
+    }
+
+    #[test]
+    fn test_poll_session_loading_empty_sessions() {
+        let mut app = AppState::loading();
+        let (tx, rx) = mpsc::channel();
+        app.session_receiver = Some(rx);
+
+        tx.send(vec![]).unwrap();
+
+        let ready = app.poll_session_loading();
+        assert!(ready);
+        assert!(!app.session_loading);
+        assert!(app.sessions.is_empty());
+        assert!(app.filtered_indices.is_empty());
     }
 }
