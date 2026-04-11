@@ -43,8 +43,12 @@ detect_target() {
 }
 
 get_latest_version() {
-  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p'
+  response=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest") || true
+  version=$(echo "${response}" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+  if [ -z "${version}" ]; then
+    error "Failed to fetch latest version. Make sure a release exists at https://github.com/${REPO}/releases"
+  fi
+  echo "${version}"
 }
 
 main() {
@@ -52,9 +56,6 @@ main() {
   info "Detected platform: ${target}"
 
   version=$(get_latest_version)
-  if [ -z "${version}" ]; then
-    error "Failed to fetch latest version"
-  fi
   info "Latest version: ${version}"
 
   archive="cchb-${target}.tar.gz"
