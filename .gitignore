@@ -1,2 +1,4 @@
 /target
+
 .claude/plans/
+.claude/settings.local.json
