@@ -295,15 +295,11 @@ pub fn discover_sessions(claude_dir: &Path) -> Result<Vec<SessionIndex>> {
                 dir_sessions.extend(index_sessions);
             }
 
-            // Always scan JSONL files to catch sessions not in the index
+            // Scan JSONL files to catch sessions not in the index, skipping already-known IDs.
             if let Ok(scanned_sessions) =
-                load_sessions_from_jsonl_scan(path, &project_path, &project_display)
+                load_sessions_from_jsonl_scan(path, &project_path, &project_display, &seen_ids)
             {
-                for s in scanned_sessions {
-                    if !seen_ids.contains(&s.session_id) {
-                        dir_sessions.push(s);
-                    }
-                }
+                dir_sessions.extend(scanned_sessions);
             }
 
             dir_sessions
@@ -397,6 +393,7 @@ fn load_sessions_from_jsonl_scan(
     project_dir: &Path,
     project_path: &str,
     _project_display: &str,
+    skip_ids: &HashSet<String>,
 ) -> Result<Vec<SessionIndex>> {
     let mut sessions = Vec::new();
 
@@ -414,6 +411,11 @@ fn load_sessions_from_jsonl_scan(
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
+
+        // Skip files already covered by the sessions-index.json fast path.
+        if skip_ids.contains(&session_id) {
+            continue;
+        }
 
         let file = match fs::File::open(&path) {
             Ok(f) => f,
