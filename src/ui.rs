@@ -221,7 +221,6 @@ fn render_session_list(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
                 first_line_spans.push(Span::raw(" "));
                 first_line_spans.push(Span::styled(&session.branch_display, theme.session_branch));
             }
-
             let second_line = Line::from(vec![Span::styled(
                 &session.date_display,
                 theme.session_date,

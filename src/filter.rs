@@ -528,6 +528,8 @@ mod tests {
 
     // --- count_total_search_matches tests ---
 
+    // --- count_total_search_matches tests ---
+
     #[test]
     fn test_count_total_search_matches_basic() {
         let cache = sample_caches();
