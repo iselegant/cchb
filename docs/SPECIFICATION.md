@@ -175,7 +175,7 @@ Each JSONL file consists of one message per line:
 - **Metadata fallback**: When conversation content cache is not yet loaded, search falls back to session metadata (project name, first prompt, summary, git branch)
 - Real-time filtering of session list as user types (immediate via metadata, refined when content cache loads)
 - `Enter` to confirm, `Esc` to cancel
-- **Active search indicator**: When a search query is active after confirmation, it is displayed in the status bar
+- **Active search indicator**: When a search query is active after confirmation, the status bar shows `[search: <query> | all: <N> | conv: <current>/<total>]` where `all` is the total keyword occurrences across all sessions and `conv` is the current match position within the open conversation
 - **Conversation highlight**: Matching substrings in the conversation view are highlighted (case-insensitive, black text on yellow background)
 
 ### FR-5: Date Range Filter (d key)

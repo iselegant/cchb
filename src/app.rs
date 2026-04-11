@@ -90,6 +90,10 @@ pub struct AppState {
     /// Cached lowercased search query. Recomputed only when `search_query` changes.
     search_query_lower_src: String,
     search_query_lower_val: String,
+    /// Total search match count across all sessions (from content cache).
+    pub search_total_matches: usize,
+    /// Cache key for search_total_matches: (query, cache_len) to avoid recomputing every frame.
+    pub search_total_matches_key: (String, usize),
     /// True while the background thread is discovering sessions at startup.
     pub session_loading: bool,
     /// Receiver for the background session-discovery thread result.
@@ -136,6 +140,8 @@ impl AppState {
             search_match_cache_key: (String::new(), (None, 0)),
             search_query_lower_src: String::new(),
             search_query_lower_val: String::new(),
+            search_total_matches: 0,
+            search_total_matches_key: (String::new(), 0),
             session_loading: false,
             session_receiver: None,
         }

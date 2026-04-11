@@ -147,6 +147,28 @@ pub fn apply_filters(
         .collect()
 }
 
+/// Count total occurrences of a search query across all cached session content.
+/// Both the query and cache entries are compared case-insensitively
+/// (cache is already pre-lowercased at build time).
+pub fn count_total_search_matches(query: &str, cache: &[String]) -> usize {
+    if query.is_empty() {
+        return 0;
+    }
+    let query_lower = query.to_lowercase();
+    cache
+        .iter()
+        .map(|entry| {
+            let mut count = 0;
+            let mut start = 0;
+            while let Some(pos) = entry[start..].find(&query_lower) {
+                count += 1;
+                start += pos + query_lower.len();
+            }
+            count
+        })
+        .sum()
+}
+
 /// Parse a date string in YYYY-MM-DD format.
 pub fn parse_date_input(input: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d").ok()
@@ -502,6 +524,50 @@ mod tests {
         // Case-insensitive query should still match pre-lowercased cache
         let result = fuzzy_filter(&sessions, "TERRAFORM", &cache);
         assert_eq!(result, vec![0, 3]);
+    }
+
+    // --- count_total_search_matches tests ---
+
+    #[test]
+    fn test_count_total_search_matches_basic() {
+        let cache = sample_caches();
+        // "terraform" appears once in s1 and once in s4 → total 2
+        let count = count_total_search_matches("terraform", &cache);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_count_total_search_matches_multiple_in_one_entry() {
+        let cache = vec!["terraform plan terraform apply terraform destroy".into()];
+        let count = count_total_search_matches("terraform", &cache);
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn test_count_total_search_matches_empty_query() {
+        let cache = sample_caches();
+        let count = count_total_search_matches("", &cache);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_count_total_search_matches_no_match() {
+        let cache = sample_caches();
+        let count = count_total_search_matches("zzzzz", &cache);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_count_total_search_matches_case_insensitive() {
+        let cache = sample_caches();
+        let count = count_total_search_matches("TERRAFORM", &cache);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_count_total_search_matches_empty_cache() {
+        let count = count_total_search_matches("terraform", &[]);
+        assert_eq!(count, 0);
     }
 
     #[test]
