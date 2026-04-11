@@ -1,5 +1,6 @@
 use crate::app::{AppMode, AppState, DateField, Panel};
 use crate::color::Theme;
+use crate::filter;
 use crate::markdown;
 use crate::session::ContentBlock;
 use ratatui::Frame;
@@ -493,7 +494,7 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
     }
 }
 
-fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Theme) {
+fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &Theme) {
     let session_count = app.filtered_indices.len();
     let total = app.sessions.len();
 
@@ -512,14 +513,25 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &AppState, theme: &Them
     };
 
     let search_indicator = if !app.search_query.is_empty() {
-        let match_info = if app.search_match_positions.is_empty() {
+        // Recompute total matches across all sessions only when query or cache changes.
+        let total_key = (app.search_query.clone(), app.search_content_cache.len());
+        if app.search_total_matches_key != total_key {
+            app.search_total_matches =
+                filter::count_total_search_matches(&app.search_query, &app.search_content_cache);
+            app.search_total_matches_key = total_key;
+        }
+
+        let conv_info = if app.search_match_positions.is_empty() {
             String::new()
         } else if let Some(idx) = app.search_match_current {
-            format!(" {}/{}", idx + 1, app.search_match_positions.len())
+            format!(" | conv: {}/{}", idx + 1, app.search_match_positions.len())
         } else {
-            format!(" {}", app.search_match_positions.len())
+            format!(" | conv: {}", app.search_match_positions.len())
         };
-        format!("  [search: {}{}]", app.search_query, match_info)
+        format!(
+            "  [search: {} | all: {}{}]",
+            app.search_query, app.search_total_matches, conv_info
+        )
     } else {
         String::new()
     };
