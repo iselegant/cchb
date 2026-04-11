@@ -16,36 +16,37 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: cchb-aarch64-apple-darwin
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: cchb-x86_64-apple-darwin
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: cchb-x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # v2.9.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-      - name: Package binary
+      - name: Package
         env:
           TARGET: ${{ matrix.target }}
-          ARTIFACT: ${{ matrix.artifact }}
         run: |
           mkdir -p dist
-          cp "target/${TARGET}/release/cchb" "dist/${ARTIFACT}"
-          chmod +x "dist/${ARTIFACT}"
+          cp "target/${TARGET}/release/cchb" dist/cchb
+          cd dist
+          tar czf "cchb-${TARGET}.tar.gz" cchb
+          rm cchb
       - name: Upload artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        # v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: cchb-${{ matrix.target }}
+          path: dist/cchb-${{ matrix.target }}.tar.gz
 
   release:
     needs: build
@@ -53,11 +54,22 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: artifacts
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum cchb-*.tar.gz > checksums-sha256.txt
+          cat checksums-sha256.txt
       - name: Create release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        # v2.6.1
+        # yamllint disable-line rule:line-length
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/cchb-*.tar.gz
+            artifacts/checksums-sha256.txt
           generate_release_notes: true

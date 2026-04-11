@@ -19,15 +19,35 @@ Inspired by [ccresume](https://github.com/sasazame/ccresume).
 
 ## Installation
 
-Download a pre-built binary from [GitHub Releases](https://github.com/iselegant/cchb/releases) and place it in your `$PATH`.
+### Quick install (recommended)
 
-### Supported platforms
+```sh
+curl -fsSL https://raw.githubusercontent.com/iselegant/cchb/main/install.sh | sh
+```
+
+This auto-detects your OS and architecture, downloads the latest binary, and places it in `~/.local/bin/`.
+
+### Homebrew (macOS) — coming soon
+
+```sh
+brew install iselegant/tap/cchb
+```
+
+### Cargo — coming soon
+
+```sh
+cargo install cchb
+```
+
+### Manual download
+
+Download a pre-built binary from [GitHub Releases](https://github.com/iselegant/cchb/releases) and place it in your `$PATH`.
 
 | Platform | Binary |
 |----------|--------|
-| macOS (Apple Silicon) | `cchb-aarch64-apple-darwin` |
-| macOS (Intel) | `cchb-x86_64-apple-darwin` |
-| Linux (x86_64) | `cchb-x86_64-unknown-linux-gnu` |
+| macOS (Apple Silicon) | `cchb-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `cchb-x86_64-apple-darwin.tar.gz` |
+| Linux (x86_64) | `cchb-x86_64-unknown-linux-gnu.tar.gz` |
 
 ### Build from source
 

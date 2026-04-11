@@ -4,6 +4,10 @@ version = "0.9.0"
 edition = "2024"
 description = "A TUI tool for browsing and restoring past Claude Code session history"
 license = "Apache-2.0"
+repository = "https://github.com/iselegant/cchb"
+homepage = "https://github.com/iselegant/cchb"
+keywords = ["claude", "tui", "history", "session", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 ratatui = "0.30"
