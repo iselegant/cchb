@@ -705,6 +705,32 @@ impl AppState {
             self.should_quit = true;
         }
     }
+
+    /// Load conversation for the currently focused session if not already loaded.
+    /// Returns true if a new conversation was loaded (or cleared).
+    pub fn maybe_load_focused_conversation(&mut self) -> bool {
+        let current_session_id = self.selected_session().map(|s| s.session_id.clone());
+
+        if current_session_id == self.loaded_session_id {
+            return false;
+        }
+
+        if let Some(sess) = self.selected_session() {
+            let path = sess.file_path.clone();
+            if let Ok(messages) = session::load_conversation(&path) {
+                let display = session::display_messages(messages);
+                self.conversation = display;
+            } else {
+                self.conversation.clear();
+            }
+            self.loaded_session_id = current_session_id;
+            self.conversation_scroll = 0;
+        } else {
+            self.conversation.clear();
+            self.loaded_session_id = None;
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -713,7 +739,9 @@ mod tests {
     use crate::session::SessionIndex;
     use chrono::Utc;
     use ratatui::text::Line;
+    use std::io::Write;
     use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
     fn make_sessions(n: usize) -> Vec<SessionIndex> {
         (0..n)
@@ -1714,5 +1742,252 @@ mod tests {
         assert!(!app.session_loading);
         assert!(app.sessions.is_empty());
         assert!(app.filtered_indices.is_empty());
+    }
+
+    // --- maybe_load_focused_conversation tests ---
+
+    fn make_jsonl_file(content: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    fn make_sessions_with_file(file_path: PathBuf) -> Vec<SessionIndex> {
+        vec![
+            SessionIndex {
+                session_id: "sess-0".into(),
+                project_path: "/test/project".into(),
+                project_display: "project".into(),
+                first_prompt: "Hello".into(),
+                summary: None,
+                created: Utc::now(),
+                modified: Utc::now(),
+                git_branch: Some("main".into()),
+                message_count: 1,
+                file_path,
+                date_display: String::new(),
+                branch_display: String::new(),
+                prompt_preview: String::new(),
+            }
+            .with_display_fields(),
+        ]
+    }
+
+    #[test]
+    fn test_maybe_load_no_session_selected() {
+        let mut app = AppState::new(vec![]);
+        let changed = app.maybe_load_focused_conversation();
+        assert!(!changed); // no session, loaded_session_id is already None
+        assert!(app.conversation.is_empty());
+        assert!(app.loaded_session_id.is_none());
+    }
+
+    #[test]
+    fn test_maybe_load_initial_load() {
+        let jsonl = make_jsonl_file(
+            r#"{"type":"user","message":{"role":"user","content":"Hello"},"uuid":"u1"}"#,
+        );
+        let sessions = make_sessions_with_file(jsonl.path().to_path_buf());
+        let mut app = AppState::new(sessions);
+
+        let changed = app.maybe_load_focused_conversation();
+        assert!(changed);
+        assert_eq!(app.loaded_session_id, Some("sess-0".into()));
+        assert!(!app.conversation.is_empty());
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_maybe_load_cached_skip() {
+        let jsonl = make_jsonl_file(
+            r#"{"type":"user","message":{"role":"user","content":"Hello"},"uuid":"u1"}"#,
+        );
+        let sessions = make_sessions_with_file(jsonl.path().to_path_buf());
+        let mut app = AppState::new(sessions);
+
+        app.maybe_load_focused_conversation();
+        assert_eq!(app.loaded_session_id, Some("sess-0".into()));
+
+        // Second call should be a no-op
+        let changed = app.maybe_load_focused_conversation();
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_maybe_load_session_change() {
+        let jsonl1 = make_jsonl_file(
+            r#"{"type":"user","message":{"role":"user","content":"First"},"uuid":"u1"}"#,
+        );
+        let jsonl2 = make_jsonl_file(
+            r#"{"type":"user","message":{"role":"user","content":"Second"},"uuid":"u2"}"#,
+        );
+        let sessions = vec![
+            SessionIndex {
+                session_id: "sess-0".into(),
+                project_path: "/test/p0".into(),
+                project_display: "p0".into(),
+                first_prompt: "First".into(),
+                summary: None,
+                created: Utc::now(),
+                modified: Utc::now(),
+                git_branch: None,
+                message_count: 1,
+                file_path: jsonl1.path().to_path_buf(),
+                date_display: String::new(),
+                branch_display: String::new(),
+                prompt_preview: String::new(),
+            }
+            .with_display_fields(),
+            SessionIndex {
+                session_id: "sess-1".into(),
+                project_path: "/test/p1".into(),
+                project_display: "p1".into(),
+                first_prompt: "Second".into(),
+                summary: None,
+                created: Utc::now(),
+                modified: Utc::now(),
+                git_branch: None,
+                message_count: 1,
+                file_path: jsonl2.path().to_path_buf(),
+                date_display: String::new(),
+                branch_display: String::new(),
+                prompt_preview: String::new(),
+            }
+            .with_display_fields(),
+        ];
+        let mut app = AppState::new(sessions);
+
+        // Load first session
+        app.maybe_load_focused_conversation();
+        assert_eq!(app.loaded_session_id, Some("sess-0".into()));
+
+        // Switch to second session
+        app.select_next();
+        let changed = app.maybe_load_focused_conversation();
+        assert!(changed);
+        assert_eq!(app.loaded_session_id, Some("sess-1".into()));
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_maybe_load_bad_file_clears_conversation() {
+        let sessions = make_sessions_with_file(PathBuf::from("/nonexistent/path.jsonl"));
+        let mut app = AppState::new(sessions);
+
+        let changed = app.maybe_load_focused_conversation();
+        assert!(changed);
+        assert!(app.conversation.is_empty());
+        assert_eq!(app.loaded_session_id, Some("sess-0".into()));
+    }
+
+    // --- Additional edge case tests ---
+
+    #[test]
+    fn test_page_down_with_items_per_page_1() {
+        let mut app = AppState::new(make_sessions(5));
+        app.items_per_page = 1;
+        app.selected_index = 0;
+
+        app.page_down();
+        assert_eq!(app.selected_index, 1);
+
+        app.page_down();
+        assert_eq!(app.selected_index, 2);
+    }
+
+    #[test]
+    fn test_page_up_with_items_per_page_1() {
+        let mut app = AppState::new(make_sessions(5));
+        app.items_per_page = 1;
+        app.selected_index = 3;
+
+        app.page_up();
+        assert_eq!(app.selected_index, 2);
+
+        app.page_up();
+        assert_eq!(app.selected_index, 1);
+    }
+
+    #[test]
+    fn test_page_down_at_last_item() {
+        let mut app = AppState::new(make_sessions(5));
+        app.items_per_page = 3;
+        app.selected_index = 4;
+        app.sync_list_state();
+
+        app.page_down();
+        assert_eq!(app.selected_index, 4);
+    }
+
+    #[test]
+    fn test_page_up_at_first_item() {
+        let mut app = AppState::new(make_sessions(5));
+        app.items_per_page = 3;
+        app.selected_index = 0;
+
+        app.page_up();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_page_down_empty_sessions() {
+        let mut app = AppState::new(vec![]);
+        app.items_per_page = 5;
+
+        app.page_down();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_scroll_conversation_with_empty_conversation() {
+        let mut app = AppState::new(make_sessions(1));
+        assert!(app.conversation.is_empty());
+
+        app.scroll_conversation_down();
+        app.scroll_conversation_up();
+        assert_eq!(app.conversation_scroll, 0);
+    }
+
+    #[test]
+    fn test_select_next_prev_single_session() {
+        let mut app = AppState::new(make_sessions(1));
+        assert_eq!(app.selected_index, 0);
+
+        app.select_next();
+        assert_eq!(app.selected_index, 0);
+
+        app.select_prev();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_half_page_down_up_boundary() {
+        let mut app = AppState::new(make_sessions(3));
+        app.items_per_page = 10;
+
+        app.half_page_down(10);
+        assert_eq!(app.selected_index, 2);
+
+        app.half_page_up(10);
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_large_session_list_navigation() {
+        let mut app = AppState::new(make_sessions(200));
+        app.items_per_page = 10;
+        assert_eq!(app.filtered_indices.len(), 200);
+
+        app.go_bottom();
+        assert_eq!(app.selected_index, 199);
+
+        app.go_top();
+        assert_eq!(app.selected_index, 0);
+
+        for _ in 0..25 {
+            app.page_down();
+        }
+        assert!(app.selected_index <= 199);
     }
 }

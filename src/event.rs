@@ -1246,4 +1246,100 @@ mod tests {
             Some(crate::app::SearchJumpDirection::Last)
         );
     }
+
+    // --- Additional edge case tests ---
+
+    #[test]
+    fn test_normal_navigation_zero_sessions() {
+        let mut app = AppState::new(vec![]);
+        // All navigation keys should not panic with empty session list
+        handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('k'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('g'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('G'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        handle_key(&mut app, make_key_ctrl('d')).unwrap();
+        handle_key(&mut app, make_key_ctrl('u')).unwrap();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_normal_enter_with_zero_sessions() {
+        let mut app = AppState::new(vec![]);
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        // Should stay in Normal mode since no session to enter
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_search_mode_empty_query_escape() {
+        let mut app = AppState::new(make_sessions(3));
+        app.enter_search();
+        assert_eq!(app.mode, AppMode::FuzzySearch);
+
+        // Escape with empty query should cancel
+        handle_key(&mut app, make_key(KeyCode::Esc)).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+        assert!(app.search_query.is_empty());
+    }
+
+    #[test]
+    fn test_date_filter_empty_input_enter() {
+        let mut app = AppState::new(make_sessions(3));
+        app.enter_date_filter();
+        assert_eq!(app.mode, AppMode::DateFilter);
+
+        // Enter with empty date inputs should apply (no date filter)
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+        assert_eq!(app.filtered_indices.len(), 3);
+    }
+
+    #[test]
+    fn test_date_filter_invalid_date_enter() {
+        let mut app = AppState::new(make_sessions(3));
+        app.enter_date_filter();
+        app.date_from_input = "invalid".into();
+
+        // Enter with invalid date should still apply (unparseable → no date constraint)
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_items_per_page_larger_than_sessions() {
+        let mut app = AppState::new(make_sessions(3));
+        app.items_per_page = 100;
+
+        // Page down should go to last item, not overflow
+        handle_key(&mut app, make_key(KeyCode::Right)).unwrap();
+        assert_eq!(app.selected_index, 2);
+
+        // Page up should go back to first
+        handle_key(&mut app, make_key(KeyCode::Left)).unwrap();
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_viewing_scroll_zero_sessions() {
+        let mut app = AppState::new(vec![]);
+        app.mode = AppMode::Viewing;
+        app.active_panel = Panel::ConversationView;
+
+        // Scrolling with no conversation should not panic
+        handle_key(&mut app, make_key(KeyCode::Char('j'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('k'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('g'))).unwrap();
+        handle_key(&mut app, make_key(KeyCode::Char('G'))).unwrap();
+    }
+
+    #[test]
+    fn test_search_backspace_on_empty_query() {
+        let mut app = AppState::new(make_sessions(3));
+        app.enter_search();
+        // Backspace on empty query should not panic
+        handle_key(&mut app, make_key(KeyCode::Backspace)).unwrap();
+        assert!(app.search_query.is_empty());
+    }
 }

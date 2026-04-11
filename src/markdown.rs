@@ -1063,4 +1063,111 @@ mod tests {
             assert!(w <= 5, "Line width {w} exceeds max 5");
         }
     }
+
+    // --- Additional edge case tests ---
+
+    #[test]
+    fn test_whitespace_only_input() {
+        let t = theme();
+        let result = render_md("   \n\n   ", base_style(), &t);
+        // Should not panic; may produce empty or whitespace-only lines
+        let text = spans_text(&result);
+        assert!(text.trim().is_empty() || result.is_empty());
+    }
+
+    #[test]
+    fn test_empty_table_no_data_rows() {
+        let t = theme();
+        let result = render_md("| A | B |\n|---|---|", base_style(), &t);
+        let text = spans_text(&result);
+        assert!(text.contains("A"));
+        assert!(text.contains("B"));
+    }
+
+    #[test]
+    fn test_single_cell_table() {
+        let t = theme();
+        let result = render_md("| X |\n|---|\n| Y |", base_style(), &t);
+        let text = spans_text(&result);
+        assert!(text.contains("X"));
+        assert!(text.contains("Y"));
+    }
+
+    #[test]
+    fn test_table_very_narrow_width() {
+        let t = theme();
+        let md = "| Col1 | Col2 |\n|---|---|\n| val1 | val2 |";
+        let result = render_markdown(md, base_style(), &t, 10);
+        // Should not panic even with extremely narrow width
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_empty_code_block() {
+        let t = theme();
+        let result = render_md("```\n```", base_style(), &t);
+        // Should not panic; code block with no content
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_code_block_no_language() {
+        let t = theme();
+        let result = render_md("```\nsome code\n```", base_style(), &t);
+        let text = spans_text(&result);
+        assert!(text.contains("some code"));
+    }
+
+    #[test]
+    fn test_deeply_nested_formatting() {
+        let t = theme();
+        // Bold inside italic
+        let result = render_md("*text **bold inside italic** end*", base_style(), &t);
+        let text = spans_text(&result);
+        assert!(text.contains("bold inside italic"));
+    }
+
+    #[test]
+    fn test_wrap_line_max_width_1() {
+        let line = Line::from("abc");
+        let result = wrap_line(line, 1);
+        // Each character should be on its own line
+        assert_eq!(result.len(), 3);
+        for r in &result {
+            let w: usize = r.spans.iter().map(|s| s.content.width()).sum();
+            assert!(w <= 1, "Line width {w} exceeds max 1");
+        }
+    }
+
+    #[test]
+    fn test_wrap_line_exact_boundary() {
+        let line = Line::from("hello");
+        let result = wrap_line(line, 5);
+        // Exactly fits, should not wrap
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_render_markdown_width_very_small() {
+        let t = theme();
+        // Width of 1 should not panic
+        let result = render_markdown("hello world", base_style(), &t, 1);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_link_with_empty_url() {
+        let t = theme();
+        let result = render_md("[text]()", base_style(), &t);
+        let text = spans_text(&result);
+        assert!(text.contains("text"));
+    }
+
+    #[test]
+    fn test_truncate_to_width_edge_cases() {
+        assert_eq!(truncate_to_width("", 10), "");
+        assert_eq!(truncate_to_width("ab", 2), "ab");
+        assert_eq!(truncate_to_width("abc", 2), "..");
+        assert_eq!(truncate_to_width("a", 1), "a");
+    }
 }

@@ -119,3 +119,48 @@ impl Theme {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_theme_construction() {
+        // Verify theme can be constructed without panic
+        let _theme = Theme::default_theme();
+    }
+
+    #[test]
+    fn test_theme_user_assistant_styles_distinct() {
+        let theme = Theme::default_theme();
+        assert_ne!(theme.user_label, theme.assistant_label);
+        assert_ne!(theme.user_border, theme.assistant_border);
+    }
+
+    #[test]
+    fn test_theme_search_highlight_styles_distinct() {
+        let theme = Theme::default_theme();
+        assert_ne!(theme.search_highlight, theme.search_highlight_current);
+    }
+
+    #[test]
+    fn test_theme_active_inactive_border_distinct() {
+        let theme = Theme::default_theme();
+        assert_ne!(theme.border_active, theme.border_inactive);
+    }
+
+    #[test]
+    fn test_markdown_styles_heading_levels_distinct() {
+        let theme = Theme::default_theme();
+        assert_ne!(theme.markdown.heading1, theme.markdown.heading2);
+        assert_ne!(theme.markdown.heading2, theme.markdown.heading3);
+        assert_ne!(theme.markdown.heading1, theme.markdown.heading3);
+    }
+
+    #[test]
+    fn test_markdown_styles_code_distinct_from_text() {
+        let theme = Theme::default_theme();
+        assert_ne!(theme.markdown.inline_code, theme.markdown.bold);
+        assert_ne!(theme.markdown.code_block, theme.markdown.bold);
+    }
+}
