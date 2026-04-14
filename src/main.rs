@@ -3,7 +3,7 @@ use cchb::app::{self, AppState};
 use cchb::color::Theme;
 use cchb::{event, session, ui};
 use crossterm::ExecutableCommand;
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
@@ -29,12 +29,16 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     io::stdout()
         .execute(EnterAlternateScreen)
         .context("Failed to enter alternate screen")?;
+    io::stdout()
+        .execute(EnableMouseCapture)
+        .context("Failed to enable mouse capture")?;
     let backend = CrosstermBackend::new(io::stdout());
     let terminal = Terminal::new(backend).context("Failed to create terminal")?;
     Ok(terminal)
 }
 
 fn restore_terminal() {
+    let _ = io::stdout().execute(DisableMouseCapture);
     let _ = terminal::disable_raw_mode();
     let _ = io::stdout().execute(LeaveAlternateScreen);
 }
@@ -72,34 +76,44 @@ fn run_app(
         // Auto-dismiss reload indicator after timeout.
         app.check_reload_expired();
 
+        // Auto-dismiss clipboard flash indicator after timeout.
+        app.check_clipboard_flash_expired();
+
         // Use shorter poll interval during logo sparkle animation for smooth color cycling.
         let poll_ms = if app.logo_sparkle_start.is_some() {
             50
         } else {
             250
         };
-        if crossterm::event::poll(Duration::from_millis(poll_ms))?
-            && let Event::Key(key) = crossterm::event::read()?
-        {
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
+        if crossterm::event::poll(Duration::from_millis(poll_ms))? {
+            match crossterm::event::read()? {
+                Event::Key(key) => {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
 
-            // Handle reload (R key in normal mode)
-            if app.mode == app::AppMode::Normal && key.code == crossterm::event::KeyCode::Char('R')
-            {
-                if let Ok(sessions) = session::discover_sessions(claude_dir) {
-                    let indices: Vec<usize> = (0..sessions.len()).collect();
-                    app.sessions = sessions;
-                    app.filtered_indices = indices;
-                    app.selected_index = 0;
-                    app.loaded_session_id = None;
-                    app.invalidate_search_content_cache();
+                    // Handle reload (R key in normal mode)
+                    if app.mode == app::AppMode::Normal
+                        && key.code == crossterm::event::KeyCode::Char('R')
+                    {
+                        if let Ok(sessions) = session::discover_sessions(claude_dir) {
+                            let indices: Vec<usize> = (0..sessions.len()).collect();
+                            app.sessions = sessions;
+                            app.filtered_indices = indices;
+                            app.selected_index = 0;
+                            app.loaded_session_id = None;
+                            app.invalidate_search_content_cache();
+                        }
+                        continue;
+                    }
+
+                    event::handle_key(app, key)?;
                 }
-                continue;
+                Event::Mouse(mouse) => {
+                    event::handle_mouse(app, mouse);
+                }
+                _ => continue,
             }
-
-            event::handle_key(app, key)?;
 
             // Auto-load conversation when focus changes
             app.maybe_load_focused_conversation();

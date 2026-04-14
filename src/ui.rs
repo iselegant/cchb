@@ -170,6 +170,7 @@ fn render_main_content(frame: &mut Frame, area: Rect, app: &mut AppState, theme:
     let chunks =
         Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)]).split(area);
 
+    app.panel_geometry.session_list = Some(chunks[0]);
     render_session_list(frame, chunks[0], app, theme);
     render_conversation_view(frame, chunks[1], app, theme);
 }
@@ -406,6 +407,7 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
 
     // Compute viewport dimensions and clamp scroll BEFORE cloning any lines.
     let content_area = body_block.inner(body_area);
+    app.panel_geometry.conversation_body = Some(content_area);
     let visible_height = content_area.height as usize;
     let total_lines = app.conversation_lines_cache.len();
     let max_scroll = total_lines.saturating_sub(visible_height);
@@ -477,6 +479,17 @@ fn render_conversation_view(frame: &mut Frame, area: Rect, app: &mut AppState, t
         app.conversation_lines_cache[scroll..visible_end].to_vec()
     };
 
+    // Apply text selection highlighting if active.
+    let visible_lines = if let Some(ref sel) = app.text_selection {
+        if !sel.is_empty() {
+            apply_selection_highlight(visible_lines, sel, scroll, theme.text_selection)
+        } else {
+            visible_lines
+        }
+    } else {
+        visible_lines
+    };
+
     let paragraph = Paragraph::new(visible_lines).block(body_block);
 
     frame.render_widget(paragraph, body_area);
@@ -507,6 +520,12 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &
 
     let reload_indicator = if app.conversation_reloading {
         "  [Reloaded!]"
+    } else {
+        ""
+    };
+
+    let clipboard_indicator = if app.clipboard_flash_at.is_some() {
+        "  [Copied!]"
     } else {
         ""
     };
@@ -554,7 +573,10 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &
         }
     };
 
-    let left_len = status_text.len() + reload_indicator.len() + search_indicator.len();
+    let left_len = status_text.len()
+        + reload_indicator.len()
+        + clipboard_indicator.len()
+        + search_indicator.len();
     let fill_len = (area.width as usize)
         .saturating_sub(left_len)
         .saturating_sub(hints.len());
@@ -565,6 +587,13 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &
             reload_indicator,
             Style::default()
                 .fg(Color::Green)
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            clipboard_indicator,
+            Style::default()
+                .fg(Color::Cyan)
                 .bg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD),
         ),
@@ -656,7 +685,7 @@ fn render_date_filter_overlay(frame: &mut Frame, app: &AppState, theme: &Theme) 
 }
 
 fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
-    let area = centered_rect(50, 20, frame.area());
+    let area = centered_rect(50, 22, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -683,6 +712,8 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
             "Next / Prev match (cross-session in session panel)",
             theme,
         ),
+        help_line("y", "Copy selected text", theme),
+        help_line("Mouse drag", "Select text in conversation", theme),
         Line::from(""),
         Line::from(Span::styled(" Press any key to close", theme.help_desc)),
     ];
@@ -811,6 +842,129 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     .split(vertical[1]);
 
     horizontal[1]
+}
+
+/// Apply selection highlighting to visible lines.
+/// `scroll` is the current conversation scroll offset.
+fn apply_selection_highlight<'a>(
+    lines: Vec<Line<'a>>,
+    sel: &crate::app::TextSelection,
+    scroll: usize,
+    selection_style: Style,
+) -> Vec<Line<'a>> {
+    let (sel_start, sel_end) = sel.ordered();
+    lines
+        .into_iter()
+        .enumerate()
+        .map(|(vi, line)| {
+            let abs_line = scroll + vi;
+            if abs_line < sel_start.line || abs_line > sel_end.line {
+                return line;
+            }
+            let start_col = if abs_line == sel_start.line {
+                sel_start.col
+            } else {
+                0
+            };
+            let end_col = if abs_line == sel_end.line {
+                sel_end.col
+            } else {
+                usize::MAX
+            };
+            if start_col == end_col {
+                return line;
+            }
+            highlight_selection_range(line, start_col, end_col, selection_style)
+        })
+        .collect()
+}
+
+/// Highlight characters in the column range [start_col, end_col) within a line.
+/// Column positions are based on display width (accounting for the border prefix).
+/// The prefix occupies 4 display columns ("│ " + "  "), and selection columns
+/// are relative to the content after that prefix.
+fn highlight_selection_range<'a>(
+    line: Line<'a>,
+    start_col: usize,
+    end_col: usize,
+    selection_style: Style,
+) -> Line<'a> {
+    use unicode_width::UnicodeWidthChar;
+
+    let mut result_spans: Vec<Span<'a>> = Vec::new();
+    // Track display-width position, starting negative to skip the 4-col border prefix.
+    let mut col: isize = -4;
+
+    for span in line.spans {
+        let style = span.style;
+        let text = span.content.into_owned();
+        let mut span_start = 0;
+
+        for (byte_idx, ch) in text.char_indices() {
+            let w = ch.width().unwrap_or(0) as isize;
+            let char_end = byte_idx + ch.len_utf8();
+
+            if col >= 0 {
+                let ucol = col as usize;
+                // Check if this character crosses a selection boundary.
+                if ucol == start_col && span_start < byte_idx {
+                    // Emit pre-selection portion.
+                    result_spans.push(Span::styled(text[span_start..byte_idx].to_string(), style));
+                    span_start = byte_idx;
+                }
+                if ucol == end_col && span_start < byte_idx {
+                    // Emit selection portion.
+                    result_spans.push(Span::styled(
+                        text[span_start..byte_idx].to_string(),
+                        selection_style,
+                    ));
+                    span_start = byte_idx;
+                }
+            } else if col + w > 0 {
+                // This character straddles the prefix boundary — treat content starting here.
+                // The remaining characters are content.
+            }
+
+            col += w;
+
+            // Handle case where we're past end_col for remaining chars.
+            if col > 0 && (col as usize) > end_col && span_start < char_end {
+                // Already past selection. Check if we need to close selection span.
+                let ucol_prev = (col - w) as usize;
+                if ucol_prev < end_col && ucol_prev >= start_col {
+                    // This char was the last selected char.
+                    result_spans.push(Span::styled(
+                        text[span_start..char_end].to_string(),
+                        selection_style,
+                    ));
+                    span_start = char_end;
+                }
+            }
+        }
+
+        // Emit remaining text in this span.
+        if span_start < text.len() {
+            let ucol_start = col.saturating_sub(
+                text[span_start..]
+                    .chars()
+                    .map(|c| c.width().unwrap_or(0) as isize)
+                    .sum::<isize>(),
+            );
+            let in_selection = ucol_start >= 0
+                && (ucol_start as usize) >= start_col
+                && (ucol_start as usize) < end_col;
+            if in_selection {
+                result_spans.push(Span::styled(
+                    text[span_start..].to_string(),
+                    selection_style,
+                ));
+            } else {
+                result_spans.push(Span::styled(text[span_start..].to_string(), style));
+            }
+        }
+    }
+
+    Line::from(result_spans)
 }
 
 #[cfg(test)]
@@ -1064,5 +1218,78 @@ mod tests {
         // thumb at max scroll reaches bottom
         let (start, size) = scrollbar_geometry(40, 200, 40, max_scroll);
         assert_eq!(start + size, 40);
+    }
+
+    // --- Selection Highlight Tests ---
+
+    fn sel_style() -> Style {
+        Style::default().fg(Color::White).bg(Color::Blue)
+    }
+
+    #[test]
+    fn test_apply_selection_highlight_no_overlap() {
+        use crate::app::{ContentPosition, TextSelection};
+        let lines = vec![Line::from("hello world")];
+        let sel = TextSelection {
+            anchor: ContentPosition::new(5, 0),
+            cursor: ContentPosition::new(5, 5),
+            active: false,
+        };
+        // Selection is on line 5, visible lines start at scroll=0, only line 0 visible.
+        let result = apply_selection_highlight(lines.clone(), &sel, 0, sel_style());
+        // No overlap, line should be unchanged.
+        assert_eq!(result[0].spans.len(), 1);
+        assert_eq!(result[0].spans[0].content.as_ref(), "hello world");
+    }
+
+    #[test]
+    fn test_apply_selection_highlight_full_line() {
+        use crate::app::{ContentPosition, TextSelection};
+        // Simulate a content line with border prefix: "│ " + "  " + "Hello"
+        let lines = vec![Line::from(vec![
+            Span::styled("│ ", Style::default().fg(Color::Green)),
+            Span::raw("  "),
+            Span::raw("Hello"),
+        ])];
+        let sel = TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(0, 100), // select entire line
+            active: false,
+        };
+        let result = apply_selection_highlight(lines, &sel, 0, sel_style());
+        // The content "Hello" portion should have selection style applied.
+        let has_selection_style = result[0].spans.iter().any(|s| s.style == sel_style());
+        assert!(
+            has_selection_style,
+            "Selection style should be applied to content"
+        );
+    }
+
+    #[test]
+    fn test_apply_selection_highlight_multi_line() {
+        use crate::app::{ContentPosition, TextSelection};
+        let lines = vec![
+            Line::from(vec![
+                Span::styled("│ ", Style::default().fg(Color::Green)),
+                Span::raw("  "),
+                Span::raw("Line one"),
+            ]),
+            Line::from(vec![
+                Span::styled("│ ", Style::default().fg(Color::Green)),
+                Span::raw("  "),
+                Span::raw("Line two"),
+            ]),
+        ];
+        let sel = TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(1, 8),
+            active: false,
+        };
+        let result = apply_selection_highlight(lines, &sel, 0, sel_style());
+        // Both lines should have some spans with selection style.
+        for line in &result {
+            let has_sel = line.spans.iter().any(|s| s.style == sel_style());
+            assert!(has_sel, "Each selected line should have selection style");
+        }
     }
 }

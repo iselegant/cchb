@@ -1,8 +1,8 @@
-use crate::app::{AppMode, AppState, DateField, Panel};
+use crate::app::{AppMode, AppState, ContentPosition, DateField, Panel, TextSelection};
 use crate::filter;
 use crate::session;
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 /// Handle a key event based on the current app mode.
 pub fn handle_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
@@ -145,6 +145,9 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         }
         (KeyCode::Tab, _) => {
             app.toggle_panel();
+        }
+        (KeyCode::Char('y'), _) => {
+            copy_selection_to_clipboard(app);
         }
         _ => {}
     }
@@ -296,6 +299,9 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
             app.toggle_help();
         }
+        (KeyCode::Char('y'), _) => {
+            copy_selection_to_clipboard(app);
+        }
         _ => {}
     }
     Ok(())
@@ -410,6 +416,170 @@ fn reload_conversation(app: &mut AppState) {
             app.conversation = session::display_messages(messages);
         }
     }
+}
+
+/// Handle a mouse event. Ignored during overlay modes (FuzzySearch, DateFilter, Help).
+pub fn handle_mouse(app: &mut AppState, mouse: MouseEvent) {
+    // Ignore mouse events during overlay modes.
+    match app.mode {
+        AppMode::FuzzySearch | AppMode::DateFilter | AppMode::Help => return,
+        _ => {}
+    }
+
+    let col = mouse.column;
+    let row = mouse.row;
+
+    match mouse.kind {
+        MouseEventKind::ScrollUp => handle_scroll(app, col, row, ScrollDirection::Up),
+        MouseEventKind::ScrollDown => handle_scroll(app, col, row, ScrollDirection::Down),
+        MouseEventKind::Down(MouseButton::Left) => handle_mouse_down(app, col, row),
+        MouseEventKind::Drag(MouseButton::Left) => handle_mouse_drag(app, col, row),
+        MouseEventKind::Up(MouseButton::Left) => handle_mouse_up(app),
+        _ => {}
+    }
+}
+
+enum ScrollDirection {
+    Up,
+    Down,
+}
+
+fn handle_scroll(app: &mut AppState, col: u16, row: u16, direction: ScrollDirection) {
+    if is_in_rect(col, row, app.panel_geometry.conversation_body) {
+        match direction {
+            ScrollDirection::Up => app.scroll_conversation_up(),
+            ScrollDirection::Down => app.scroll_conversation_down(),
+        }
+    } else if is_in_rect(col, row, app.panel_geometry.session_list) {
+        match direction {
+            ScrollDirection::Up => app.select_prev(),
+            ScrollDirection::Down => app.select_next(),
+        }
+    }
+}
+
+fn handle_mouse_down(app: &mut AppState, col: u16, row: u16) {
+    if let Some(pos) = mouse_to_content_position(app, col, row) {
+        // Start a new text selection in the conversation panel.
+        app.text_selection = Some(TextSelection {
+            anchor: pos,
+            cursor: pos,
+            active: true,
+        });
+    } else if is_in_rect(col, row, app.panel_geometry.session_list) {
+        // Click on session list: select the clicked session.
+        app.clear_selection();
+        if let Some(rect) = app.panel_geometry.session_list {
+            let inner_y = rect.y + 1; // account for top border
+            if row >= inner_y {
+                let relative_row = (row - inner_y) as usize;
+                // Each session item is 4 lines tall.
+                let clicked_offset = relative_row / 4;
+                // Compute absolute index: current page start + clicked offset.
+                let page_start =
+                    (app.selected_index / app.items_per_page.max(1)) * app.items_per_page.max(1);
+                let target = page_start + clicked_offset;
+                if target < app.filtered_indices.len() {
+                    app.selected_index = target;
+                    app.sync_list_state();
+                }
+            }
+        }
+    } else {
+        app.clear_selection();
+    }
+}
+
+fn handle_mouse_drag(app: &mut AppState, col: u16, row: u16) {
+    let is_active = app.text_selection.as_ref().is_some_and(|sel| sel.active);
+    if !is_active {
+        return;
+    }
+    // Clamp mouse coordinates to conversation body bounds and compute position.
+    if let Some(rect) = app.panel_geometry.conversation_body {
+        let clamped_col = col.clamp(rect.x, rect.x + rect.width.saturating_sub(1));
+        let clamped_row = row.clamp(rect.y, rect.y + rect.height.saturating_sub(1));
+        if let Some(pos) = compute_content_position(app, clamped_col, clamped_row, rect)
+            && let Some(ref mut sel) = app.text_selection
+        {
+            sel.cursor = pos;
+        }
+    }
+}
+
+fn handle_mouse_up(app: &mut AppState) {
+    // Mark selection as inactive first.
+    let is_empty = if let Some(ref mut sel) = app.text_selection {
+        sel.active = false;
+        sel.is_empty()
+    } else {
+        return;
+    };
+
+    if !is_empty {
+        // Auto-copy to clipboard.
+        if let Some(text) = app.extract_selected_text()
+            && let Ok(mut clipboard) = arboard::Clipboard::new()
+        {
+            let _ = clipboard.set_text(text);
+            app.clipboard_flash_at = Some(std::time::Instant::now());
+        }
+    } else {
+        app.clear_selection();
+    }
+}
+
+/// Copy the current text selection to the system clipboard, then clear the selection.
+fn copy_selection_to_clipboard(app: &mut AppState) {
+    if app.text_selection.as_ref().is_some_and(|s| !s.is_empty()) {
+        if let Some(text) = app.extract_selected_text()
+            && let Ok(mut clipboard) = arboard::Clipboard::new()
+        {
+            let _ = clipboard.set_text(text);
+            app.clipboard_flash_at = Some(std::time::Instant::now());
+        }
+        app.clear_selection();
+    }
+}
+
+/// Check if (col, row) falls within an optional Rect.
+fn is_in_rect(col: u16, row: u16, rect: Option<ratatui::layout::Rect>) -> bool {
+    if let Some(r) = rect {
+        col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
+    } else {
+        false
+    }
+}
+
+/// Map terminal (col, row) to a ContentPosition within the conversation, or None.
+fn mouse_to_content_position(app: &AppState, col: u16, row: u16) -> Option<ContentPosition> {
+    let rect = app.panel_geometry.conversation_body?;
+    if !is_in_rect(col, row, Some(rect)) {
+        return None;
+    }
+    compute_content_position(app, col, row, rect)
+}
+
+/// Compute ContentPosition from terminal coordinates and a known content_area rect.
+fn compute_content_position(
+    app: &AppState,
+    col: u16,
+    row: u16,
+    rect: ratatui::layout::Rect,
+) -> Option<ContentPosition> {
+    let visual_row = (row.saturating_sub(rect.y)) as usize;
+    let line = app.conversation_scroll + visual_row;
+    let line = line.min(app.conversation_lines_cache.len().saturating_sub(1));
+
+    // Visual column relative to content area start.
+    let visual_col = col.saturating_sub(rect.x) as usize;
+
+    // Subtract border prefix width ("│ " = 2 + "  " = 2 = 4 display cols for content lines).
+    // For label lines ("│ You:") the prefix is 2 cols, but we use 4 uniformly
+    // since selection columns are relative to the stripped content in extract_selected_text.
+    let content_col = visual_col.saturating_sub(4);
+
+    Some(ContentPosition::new(line, content_col))
 }
 
 #[cfg(test)]
@@ -1355,5 +1525,181 @@ mod tests {
         // Backspace on empty query should not panic
         handle_key(&mut app, make_key(KeyCode::Backspace)).unwrap();
         assert!(app.search_query.is_empty());
+    }
+
+    // --- Mouse Handler Tests ---
+
+    fn make_mouse(kind: MouseEventKind, col: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn test_mouse_ignored_during_search_mode() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::FuzzySearch;
+        app.panel_geometry.conversation_body = Some(ratatui::layout::Rect::new(40, 4, 60, 20));
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 50, 10),
+        );
+        assert!(app.text_selection.is_none());
+    }
+
+    #[test]
+    fn test_mouse_ignored_during_help_mode() {
+        let mut app = AppState::new(make_sessions(3));
+        app.mode = AppMode::Help;
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 50, 10),
+        );
+        assert!(app.text_selection.is_none());
+    }
+
+    #[test]
+    fn test_mouse_click_conversation_starts_selection() {
+        let mut app = AppState::new(make_sessions(3));
+        app.panel_geometry.conversation_body = Some(ratatui::layout::Rect::new(40, 4, 60, 20));
+        // Add some cached lines so position is valid.
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("Hello")]),
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("World")]),
+        ];
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 50, 5),
+        );
+        assert!(app.text_selection.is_some());
+        let sel = app.text_selection.as_ref().unwrap();
+        assert!(sel.active);
+        assert_eq!(sel.anchor, sel.cursor);
+    }
+
+    #[test]
+    fn test_mouse_click_outside_panels_clears_selection() {
+        let mut app = AppState::new(make_sessions(3));
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(1, 5),
+            active: false,
+        });
+        // Click outside any panel (no geometry set).
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+        );
+        assert!(app.text_selection.is_none());
+    }
+
+    #[test]
+    fn test_mouse_drag_updates_cursor() {
+        let mut app = AppState::new(make_sessions(3));
+        app.panel_geometry.conversation_body = Some(ratatui::layout::Rect::new(40, 4, 60, 20));
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("Hello")]),
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("World")]),
+        ];
+        // Start selection.
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 50, 4),
+        );
+        // Drag to a different position.
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Drag(MouseButton::Left), 55, 5),
+        );
+        let sel = app.text_selection.as_ref().unwrap();
+        assert!(sel.active);
+        assert_ne!(sel.anchor, sel.cursor);
+    }
+
+    #[test]
+    fn test_mouse_drag_clamps_to_conversation_bounds() {
+        let mut app = AppState::new(make_sessions(3));
+        let rect = ratatui::layout::Rect::new(40, 4, 60, 20);
+        app.panel_geometry.conversation_body = Some(rect);
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![TLine::from(vec![
+            Span::raw("│ "),
+            Span::raw("  "),
+            Span::raw("Hello"),
+        ])];
+        // Start selection inside conversation.
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Down(MouseButton::Left), 50, 4),
+        );
+        // Drag far outside conversation bounds (into session list).
+        handle_mouse(
+            &mut app,
+            make_mouse(MouseEventKind::Drag(MouseButton::Left), 5, 50),
+        );
+        let sel = app.text_selection.as_ref().unwrap();
+        // Cursor should be clamped to the conversation body boundaries.
+        assert!(sel.active);
+        // The line should be clamped to max available (0 since only 1 line).
+        assert_eq!(sel.cursor.line, 0);
+    }
+
+    #[test]
+    fn test_scroll_in_conversation_panel() {
+        let mut app = AppState::new(make_sessions(3));
+        app.panel_geometry.conversation_body = Some(ratatui::layout::Rect::new(40, 4, 60, 20));
+        app.conversation_scroll = 5;
+        handle_mouse(&mut app, make_mouse(MouseEventKind::ScrollUp, 50, 10));
+        assert_eq!(app.conversation_scroll, 4);
+        handle_mouse(&mut app, make_mouse(MouseEventKind::ScrollDown, 50, 10));
+        assert_eq!(app.conversation_scroll, 5);
+    }
+
+    #[test]
+    fn test_scroll_in_session_list() {
+        let mut app = AppState::new(make_sessions(5));
+        app.panel_geometry.session_list = Some(ratatui::layout::Rect::new(0, 4, 40, 20));
+        assert_eq!(app.selected_index, 0);
+        handle_mouse(&mut app, make_mouse(MouseEventKind::ScrollDown, 10, 10));
+        assert_eq!(app.selected_index, 1);
+        handle_mouse(&mut app, make_mouse(MouseEventKind::ScrollUp, 10, 10));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_is_in_rect() {
+        let rect = ratatui::layout::Rect::new(10, 5, 20, 10);
+        assert!(super::is_in_rect(10, 5, Some(rect)));
+        assert!(super::is_in_rect(29, 14, Some(rect)));
+        assert!(!super::is_in_rect(30, 5, Some(rect)));
+        assert!(!super::is_in_rect(10, 15, Some(rect)));
+        assert!(!super::is_in_rect(9, 5, Some(rect)));
+        assert!(!super::is_in_rect(10, 4, Some(rect)));
+        assert!(!super::is_in_rect(0, 0, None));
+    }
+
+    #[test]
+    fn test_compute_content_position() {
+        let mut app = AppState::new(make_sessions(1));
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("Hello")]),
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("World")]),
+        ];
+        app.conversation_scroll = 0;
+        let rect = ratatui::layout::Rect::new(40, 4, 60, 20);
+        // Click at col=48, row=4 -> visual_col=8, content_col=8-4=4, line=0
+        let pos = super::compute_content_position(&app, 48, 4, rect).unwrap();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.col, 4);
+        // Click at col=44, row=5 -> visual_col=4, content_col=0, line=1
+        let pos = super::compute_content_position(&app, 44, 5, rect).unwrap();
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.col, 0);
     }
 }

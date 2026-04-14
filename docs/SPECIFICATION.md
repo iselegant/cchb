@@ -205,8 +205,23 @@ Each JSONL file consists of one message per line:
 | `R` (Shift+r) | Normal | Reload session list |
 | `[` / `]` | Viewing | Navigate to previous/next session without returning to list |
 | `n` / `N` | Normal/Viewing | Jump to next/previous search match — navigates within session matches first, then crosses to next/previous session when at the boundary. In Normal mode with Session panel, auto-enters Viewing mode. Wraps around session list. |
+| `y` | Normal/Viewing | Copy selected text to clipboard and clear selection |
 
-### FR-8: Session Restore (r key)
+### FR-8: Mouse Support & Text Selection
+
+- **Mouse capture** is enabled via crossterm `EnableMouseCapture`, disabling native terminal text selection
+- **Scroll wheel**: Scrolls the panel under the mouse cursor (session list or conversation view), regardless of active keyboard panel
+- **Click on session list**: Selects the clicked session
+- **Drag in conversation panel**: Starts text selection, highlighted in blue (dark blue background)
+  - Selection is constrained to the conversation panel — dragging outside clamps to panel boundaries
+  - On mouse release, selected text is automatically copied to the system clipboard
+  - `[Copied!]` indicator appears briefly in the status bar
+  - Selection is cleared on mode changes, session changes, or `Esc`
+- **`y` key** (Normal/Viewing): Alternative way to copy selected text and clear selection
+- Mouse events are ignored during overlay modes (FuzzySearch, DateFilter, Help)
+- Text extraction strips border prefixes (`│ ` and indent) and skips end markers (`└─`)
+
+### FR-9: Session Restore (r key)
 
 - Press `r` in Normal or Viewing mode to restore the currently selected session
 - Exits cchb TUI, then launches `claude --resume <session-id>` via `exec`
@@ -231,6 +246,7 @@ Color scheme designed for readability:
 | Assistant message border | Magenta ("│" left border with "└─" terminator) |
 | Selected row | Reverse/Highlight |
 | Search input | Yellow |
+| Text selection | White on Dark Blue |
 | Active panel border | Bright |
 | Inactive panel border | Dim |
 
@@ -273,6 +289,7 @@ Color scheme designed for readability:
 | Directories | directories | 5 | Platform-standard paths |
 | Fuzzy search | nucleo | 0.5 | fzf-like search |
 | Markdown parser | pulldown-cmark | 0.12 | CommonMark parsing for rich text rendering |
+| Clipboard | arboard | 3 | Cross-platform clipboard access |
 | Error handling | anyhow | 1 | Error chaining |
 
 ## UI Layout

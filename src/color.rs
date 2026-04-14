@@ -41,6 +41,7 @@ pub struct Theme {
     pub border_inactive: Style,
     pub status_bar: Style,
     pub title: Style,
+    pub text_selection: Style,
     pub markdown: MarkdownStyles,
 }
 
@@ -89,6 +90,7 @@ impl Theme {
             title: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
+            text_selection: Style::default().fg(Color::White).bg(Color::Indexed(24)),
             markdown: MarkdownStyles {
                 heading1: Style::default()
                     .fg(Color::Cyan)

@@ -1,10 +1,12 @@
 use crate::filter;
 use crate::session::{self, ConversationMessage, SessionIndex};
 use chrono::{Days, Local};
+use ratatui::layout::Rect;
 use ratatui::text::Line;
 use ratatui::widgets::ListState;
 use std::sync::mpsc;
 use std::time::Instant;
+use unicode_width::UnicodeWidthChar;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -31,6 +33,127 @@ pub enum DateField {
 pub enum SearchJumpDirection {
     First,
     Last,
+}
+
+/// A position within the conversation content for text selection.
+/// `line` is the index into `conversation_lines_cache`.
+/// `col` is the visual column offset within the content area (display-width based).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentPosition {
+    pub line: usize,
+    pub col: usize,
+}
+
+impl ContentPosition {
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { line, col }
+    }
+}
+
+impl PartialOrd for ContentPosition {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ContentPosition {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.line.cmp(&other.line).then(self.col.cmp(&other.col))
+    }
+}
+
+/// Tracks an active text selection in the conversation panel.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextSelection {
+    pub anchor: ContentPosition,
+    pub cursor: ContentPosition,
+    pub active: bool,
+}
+
+impl TextSelection {
+    /// Return (start, end) ordered by position.
+    pub fn ordered(&self) -> (ContentPosition, ContentPosition) {
+        if self.anchor <= self.cursor {
+            (self.anchor, self.cursor)
+        } else {
+            (self.cursor, self.anchor)
+        }
+    }
+
+    /// Return true if the selection covers zero characters.
+    pub fn is_empty(&self) -> bool {
+        self.anchor == self.cursor
+    }
+}
+
+/// Cached geometry of UI panels, updated each render cycle.
+#[derive(Debug, Clone, Default)]
+pub struct PanelGeometry {
+    pub session_list: Option<Rect>,
+    pub conversation_body: Option<Rect>,
+}
+
+/// Strip the border prefix ("│ " and optional "  " indent) from a conversation line.
+fn strip_border_prefix(text: &str) -> &str {
+    // Content lines start with "│ " (border, 2 display cols) + "  " (indent, 2 cols).
+    // Label lines start with "│ " then label text.
+    let after_border = if let Some(rest) = text.strip_prefix("│ ") {
+        rest
+    } else {
+        return text;
+    };
+    // Strip content indent if present.
+    if let Some(rest) = after_border.strip_prefix("  ") {
+        rest
+    } else {
+        after_border
+    }
+}
+
+/// Extract a substring by display-width range [from_col, to_col).
+fn substring_by_width(text: &str, from_col: usize, to_col: usize) -> String {
+    let mut result = String::new();
+    let mut col = 0;
+    for ch in text.chars() {
+        let w = ch.width().unwrap_or(0);
+        if col >= to_col {
+            break;
+        }
+        if col + w > from_col {
+            result.push(ch);
+        }
+        col += w;
+    }
+    result
+}
+
+/// Extract a substring by display-width from `from_col` to end.
+fn substring_by_width_from(text: &str, from_col: usize) -> String {
+    let mut result = String::new();
+    let mut col = 0;
+    for ch in text.chars() {
+        let w = ch.width().unwrap_or(0);
+        if col + w > from_col {
+            result.push(ch);
+        }
+        col += w;
+    }
+    result
+}
+
+/// Extract a substring by display-width from start to `to_col`.
+fn substring_by_width_to(text: &str, to_col: usize) -> String {
+    let mut result = String::new();
+    let mut col = 0;
+    for ch in text.chars() {
+        let w = ch.width().unwrap_or(0);
+        if col >= to_col {
+            break;
+        }
+        result.push(ch);
+        col += w;
+    }
+    result
 }
 
 /// Maximum total size of search content cache (1 GB).
@@ -98,6 +221,12 @@ pub struct AppState {
     pub session_loading: bool,
     /// Receiver for the background session-discovery thread result.
     pub session_receiver: Option<mpsc::Receiver<Vec<SessionIndex>>>,
+    /// Current text selection state in the conversation panel.
+    pub text_selection: Option<TextSelection>,
+    /// Cached geometry of UI panels for mouse hit-testing, updated each render cycle.
+    pub panel_geometry: PanelGeometry,
+    /// When set, shows a brief "Copied!" indicator in the status bar.
+    pub clipboard_flash_at: Option<Instant>,
 }
 
 impl AppState {
@@ -144,6 +273,9 @@ impl AppState {
             search_total_matches_key: (String::new(), 0),
             session_loading: false,
             session_receiver: None,
+            text_selection: None,
+            panel_geometry: PanelGeometry::default(),
+            clipboard_flash_at: None,
         }
     }
 
@@ -282,6 +414,7 @@ impl AppState {
         self.conversation_lines_cache.clear();
         self.conversation_cache_key = (None, 0);
         self.search_match_cache_key = (String::new(), (None, 0));
+        self.clear_selection();
     }
 
     pub fn enter_viewing(&mut self) {
@@ -289,6 +422,7 @@ impl AppState {
             self.mode = AppMode::Viewing;
             self.active_panel = Panel::ConversationView;
             self.conversation_scroll = 0;
+            self.clear_selection();
             self.invalidate_conversation_cache();
         }
     }
@@ -296,11 +430,13 @@ impl AppState {
     pub fn exit_viewing(&mut self) {
         self.mode = AppMode::Normal;
         self.active_panel = Panel::SessionList;
+        self.clear_selection();
     }
 
     pub fn enter_search(&mut self) {
         self.search_query.clear();
         self.mode = AppMode::FuzzySearch;
+        self.clear_selection();
 
         // Reuse existing cache if session list hasn't changed.
         if self.search_content_cache.len() == self.sessions.len()
@@ -375,6 +511,7 @@ impl AppState {
         self.date_to_input = today.format("%Y-%m-%d").to_string();
         self.date_field = DateField::From;
         self.mode = AppMode::DateFilter;
+        self.clear_selection();
     }
 
     /// Increment the active date field by 1 day.
@@ -703,6 +840,74 @@ impl AppState {
             self.resume_session_id = Some(session_id);
             self.resume_project_path = Some(project_path);
             self.should_quit = true;
+        }
+    }
+
+    /// Clear the current text selection.
+    pub fn clear_selection(&mut self) {
+        self.text_selection = None;
+    }
+
+    /// Duration of the clipboard "Copied!" flash indicator.
+    const CLIPBOARD_FLASH_DURATION: std::time::Duration = std::time::Duration::from_millis(1500);
+
+    /// Check and auto-dismiss the clipboard flash indicator.
+    pub fn check_clipboard_flash_expired(&mut self) {
+        if let Some(at) = self.clipboard_flash_at
+            && at.elapsed() >= Self::CLIPBOARD_FLASH_DURATION
+        {
+            self.clipboard_flash_at = None;
+        }
+    }
+
+    /// Extract clean text from the current selection, stripping border prefixes.
+    /// Returns `None` if there is no selection or the selection is empty.
+    pub fn extract_selected_text(&self) -> Option<String> {
+        let sel = self.text_selection.as_ref()?;
+        if sel.is_empty() {
+            return None;
+        }
+        let (start, end) = sel.ordered();
+        let total_lines = self.conversation_lines_cache.len();
+        if start.line >= total_lines {
+            return None;
+        }
+        let end_line = end.line.min(total_lines - 1);
+        let mut result = String::new();
+        for line_idx in start.line..=end_line {
+            let line = &self.conversation_lines_cache[line_idx];
+            // Concatenate all span text to get the full visual line content.
+            let full_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+
+            // Skip end-marker lines ("└─").
+            let trimmed = full_text.trim();
+            if trimmed.starts_with("└") {
+                continue;
+            }
+
+            // Strip border prefix: "│ " (2 display cols) + optional "  " indent (2 display cols).
+            let stripped = strip_border_prefix(&full_text);
+
+            // Apply column-based sub-selection for first and last lines.
+            let line_text = if line_idx == start.line && line_idx == end_line {
+                substring_by_width(stripped, start.col, end.col)
+            } else if line_idx == start.line {
+                substring_by_width_from(stripped, start.col)
+            } else if line_idx == end_line {
+                substring_by_width_to(stripped, end.col)
+            } else {
+                stripped.to_string()
+            };
+
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(&line_text);
+        }
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
         }
     }
 
@@ -1989,5 +2194,207 @@ mod tests {
             app.page_down();
         }
         assert!(app.selected_index <= 199);
+    }
+
+    // --- Text Selection Tests ---
+
+    #[test]
+    fn test_content_position_ordering() {
+        let a = ContentPosition::new(0, 5);
+        let b = ContentPosition::new(1, 0);
+        let c = ContentPosition::new(0, 10);
+        assert!(a < b);
+        assert!(a < c);
+        assert!(b > c);
+        assert_eq!(a, ContentPosition::new(0, 5));
+    }
+
+    #[test]
+    fn test_text_selection_ordered_forward() {
+        let sel = TextSelection {
+            anchor: ContentPosition::new(1, 3),
+            cursor: ContentPosition::new(3, 7),
+            active: true,
+        };
+        let (start, end) = sel.ordered();
+        assert_eq!(start, ContentPosition::new(1, 3));
+        assert_eq!(end, ContentPosition::new(3, 7));
+    }
+
+    #[test]
+    fn test_text_selection_ordered_backward() {
+        let sel = TextSelection {
+            anchor: ContentPosition::new(5, 10),
+            cursor: ContentPosition::new(2, 4),
+            active: true,
+        };
+        let (start, end) = sel.ordered();
+        assert_eq!(start, ContentPosition::new(2, 4));
+        assert_eq!(end, ContentPosition::new(5, 10));
+    }
+
+    #[test]
+    fn test_text_selection_is_empty() {
+        let sel = TextSelection {
+            anchor: ContentPosition::new(3, 5),
+            cursor: ContentPosition::new(3, 5),
+            active: false,
+        };
+        assert!(sel.is_empty());
+
+        let sel2 = TextSelection {
+            anchor: ContentPosition::new(3, 5),
+            cursor: ContentPosition::new(3, 6),
+            active: false,
+        };
+        assert!(!sel2.is_empty());
+    }
+
+    #[test]
+    fn test_clear_selection() {
+        let mut app = AppState::new(make_sessions(3));
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(1, 5),
+            active: false,
+        });
+        app.clear_selection();
+        assert!(app.text_selection.is_none());
+    }
+
+    #[test]
+    fn test_extract_selected_text_none_when_no_selection() {
+        let app = AppState::new(make_sessions(3));
+        assert!(app.extract_selected_text().is_none());
+    }
+
+    #[test]
+    fn test_extract_selected_text_none_when_empty_selection() {
+        let mut app = AppState::new(make_sessions(3));
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(0, 0),
+            active: false,
+        });
+        assert!(app.extract_selected_text().is_none());
+    }
+
+    #[test]
+    fn test_extract_selected_text_single_line() {
+        let mut app = AppState::new(make_sessions(1));
+        // Simulate cached conversation lines with border prefix.
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("You:")]),
+            TLine::from(vec![
+                Span::raw("│ "),
+                Span::raw("  "),
+                Span::raw("Hello world"),
+            ]),
+            TLine::from(Span::raw("└─")),
+        ];
+        // Select "Hello world" fully (line 1, col 0..11).
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(1, 0),
+            cursor: ContentPosition::new(1, 11),
+            active: false,
+        });
+        let text = app.extract_selected_text().unwrap();
+        assert_eq!(text, "Hello world");
+    }
+
+    #[test]
+    fn test_extract_selected_text_multi_line() {
+        let mut app = AppState::new(make_sessions(1));
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("You:")]),
+            TLine::from(vec![
+                Span::raw("│ "),
+                Span::raw("  "),
+                Span::raw("Line one"),
+            ]),
+            TLine::from(vec![
+                Span::raw("│ "),
+                Span::raw("  "),
+                Span::raw("Line two"),
+            ]),
+            TLine::from(Span::raw("└─")),
+        ];
+        // Select from line 1 col 0 to line 2 col 8 (full "Line one\nLine two").
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(1, 0),
+            cursor: ContentPosition::new(2, 8),
+            active: false,
+        });
+        let text = app.extract_selected_text().unwrap();
+        assert_eq!(text, "Line one\nLine two");
+    }
+
+    #[test]
+    fn test_extract_selected_text_skips_end_marker() {
+        let mut app = AppState::new(make_sessions(1));
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![
+            TLine::from(vec![Span::raw("│ "), Span::raw("  "), Span::raw("Hello")]),
+            TLine::from(Span::raw("└─")),
+        ];
+        // Select range covering the end marker.
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(0, 0),
+            cursor: ContentPosition::new(1, 5),
+            active: false,
+        });
+        let text = app.extract_selected_text().unwrap();
+        assert_eq!(text, "Hello");
+    }
+
+    #[test]
+    fn test_extract_selected_text_partial_line() {
+        let mut app = AppState::new(make_sessions(1));
+        use ratatui::text::{Line as TLine, Span};
+        app.conversation_lines_cache = vec![TLine::from(vec![
+            Span::raw("│ "),
+            Span::raw("  "),
+            Span::raw("Hello world"),
+        ])];
+        // Select "llo wo" (col 2..8).
+        app.text_selection = Some(TextSelection {
+            anchor: ContentPosition::new(0, 2),
+            cursor: ContentPosition::new(0, 8),
+            active: false,
+        });
+        let text = app.extract_selected_text().unwrap();
+        assert_eq!(text, "llo wo");
+    }
+
+    #[test]
+    fn test_strip_border_prefix() {
+        // Label line: "│ " + "You:" -> strips border, no indent match -> "You:"
+        assert_eq!(super::strip_border_prefix("│ You:"), "You:");
+        // Content line: "│ " + "  " + "Hello" -> strips border + indent -> "Hello"
+        assert_eq!(super::strip_border_prefix("│   Hello"), "Hello");
+        // Content line: "│ " + "  " + "content text"
+        assert_eq!(
+            super::strip_border_prefix("│   content text"),
+            "content text"
+        );
+        // No prefix
+        assert_eq!(super::strip_border_prefix("no prefix"), "no prefix");
+    }
+
+    #[test]
+    fn test_substring_by_width() {
+        assert_eq!(super::substring_by_width("Hello world", 2, 7), "llo w");
+        assert_eq!(super::substring_by_width("Hello", 0, 5), "Hello");
+        assert_eq!(super::substring_by_width("Hello", 0, 100), "Hello");
+        assert_eq!(super::substring_by_width("Hello", 3, 3), "");
+    }
+
+    #[test]
+    fn test_substring_by_width_cjk() {
+        // CJK characters are 2 display columns wide.
+        assert_eq!(super::substring_by_width("あいう", 0, 4), "あい");
+        assert_eq!(super::substring_by_width("あいう", 2, 6), "いう");
     }
 }
