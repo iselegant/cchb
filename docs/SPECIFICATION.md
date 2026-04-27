@@ -111,6 +111,17 @@ Each JSONL file consists of one message per line:
 - **Hidden**: `thinking` blocks, `tool_use` blocks, `tool_result`, sidechains (`isSidechain: true`)
 - **Message order**: File appearance order (follows parentUuid/uuid chain)
 
+## CLI Interface
+
+The binary accepts the following invocation forms:
+
+| Invocation | Behavior |
+|------------|----------|
+| `cchb` | Launch the TUI (default) |
+| `cchb --version` / `cchb -v` | Print `cchb <version>` to stdout and exit 0 without entering the TUI |
+
+Unknown flags are silently ignored and fall through to launching the TUI; this preserves forward compatibility with future flags. The version string is sourced at compile time from `Cargo.toml` via `env!("CARGO_PKG_VERSION")`.
+
 ## Functional Requirements
 
 ### FR-1: Session List Panel (Left Panel)

@@ -79,6 +79,12 @@ Requires Rust 2024 edition (1.85+).
 cchb
 ```
 
+### CLI Flags
+
+| Flag | Action |
+|------|--------|
+| `--version`, `-v` | Print version and exit |
+
 ### Keybindings
 
 #### Session list (Normal mode)

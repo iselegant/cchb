@@ -126,7 +126,28 @@ fn run_app(
     Ok(())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum CliAction {
+    Run,
+    PrintVersion,
+}
+
+fn parse_cli_args(args: &[String]) -> CliAction {
+    for arg in args.iter().skip(1) {
+        if arg == "--version" || arg == "-v" {
+            return CliAction::PrintVersion;
+        }
+    }
+    CliAction::Run
+}
+
 fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if parse_cli_args(&args) == CliAction::PrintVersion {
+        println!("cchb {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     // Set up panic hook to restore terminal
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -179,4 +200,42 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_no_args_returns_run() {
+        assert_eq!(parse_cli_args(&args(&["cchb"])), CliAction::Run);
+    }
+
+    #[test]
+    fn parse_long_version_flag_returns_print_version() {
+        assert_eq!(
+            parse_cli_args(&args(&["cchb", "--version"])),
+            CliAction::PrintVersion
+        );
+    }
+
+    #[test]
+    fn parse_short_version_flag_returns_print_version() {
+        assert_eq!(
+            parse_cli_args(&args(&["cchb", "-v"])),
+            CliAction::PrintVersion
+        );
+    }
+
+    #[test]
+    fn parse_unknown_arg_falls_through_to_run() {
+        assert_eq!(
+            parse_cli_args(&args(&["cchb", "--unknown"])),
+            CliAction::Run
+        );
+    }
 }
