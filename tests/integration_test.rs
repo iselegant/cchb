@@ -135,7 +135,7 @@ fn test_apply_filters_with_date_and_search() {
         .with_display_fields(),
     ];
 
-    let today = NaiveDate::from(now.date_naive());
+    let today = now.date_naive();
     let cache: Vec<String> = vec![String::new(); sessions.len()];
 
     // Combined: search "Rust" + today's date → 1 result (metadata fallback)

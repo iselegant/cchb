@@ -130,7 +130,8 @@ Each JSONL file consists of one message per line:
 - Display conversation content of the currently focused session
 - Conversation is automatically loaded when the user navigates the session list (real-time preview)
 - Loaded session is tracked by `loaded_session_id` to avoid redundant re-loading
-- `Enter` / `l` switches to Viewing mode for dedicated scroll navigation
+- `Tab` toggles panel focus to enable dedicated scroll navigation in the conversation panel
+- `Enter` restores (resumes) the currently selected session — see FR-9
 - Extract only important elements (per Display Rules)
 - Visually distinguish user messages from assistant responses
 - Word-wrap long text
@@ -162,8 +163,7 @@ Each JSONL file consists of one message per line:
 | `Left` | Normal | Previous page of sessions (Session panel) / scroll conversation (Conversation panel) |
 | `Ctrl+d` | Normal/Viewing | Panel-aware: half-page scroll down in active panel |
 | `Ctrl+u` | Normal/Viewing | Panel-aware: half-page scroll up in active panel |
-| `Enter` | Normal | Open session (enter Viewing mode) / Toggle panel (Conversation panel) |
-| `Enter` | Viewing | Toggle panel focus |
+| `Enter` | Normal/Viewing | Restore (resume) the currently selected session — see FR-9 |
 | `Esc` / `q` | Viewing | Return to list |
 | `q` | Normal | Quit application |
 
@@ -221,12 +221,13 @@ Each JSONL file consists of one message per line:
 - Mouse events are ignored during overlay modes (FuzzySearch, DateFilter, Help)
 - Text extraction strips border prefixes (`│ ` and indent) and skips end markers (`└─`)
 
-### FR-9: Session Restore (r key)
+### FR-9: Session Restore (Enter key)
 
-- Press `r` in Normal or Viewing mode to restore the currently selected session
+- Press `Enter` in Normal or Viewing mode to restore the currently selected session
 - Exits cchb TUI, then launches `claude --resume <session-id>` via `exec`
 - Terminal is properly restored before launching Claude
 - If no session is selected, the key press is ignored
+- The `r` key is not bound (previously triggered Resume; superseded by `Enter`). See ADR-0003.
 
 ## Non-Functional Requirements
 

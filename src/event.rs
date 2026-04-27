@@ -90,15 +90,7 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
             }
         }
         (KeyCode::Enter, _) => {
-            if app.active_panel == Panel::ConversationView {
-                app.toggle_panel();
-            } else if let Some(session) = app.selected_session() {
-                let path = session.file_path.clone();
-                app.enter_viewing();
-                if let Ok(messages) = session::load_conversation(&path) {
-                    app.conversation = session::display_messages(messages);
-                }
-            }
+            app.request_resume();
         }
         (KeyCode::Char('f') | KeyCode::Char('/'), _) => {
             app.enter_search();
@@ -133,9 +125,6 @@ fn handle_normal_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
         }
         (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => {
             app.toggle_help();
-        }
-        (KeyCode::Char('r'), _) => {
-            app.request_resume();
         }
         (KeyCode::Char('R'), _) => {
             // Reload is handled by main loop since it needs claude_dir path
@@ -245,9 +234,6 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 reload_conversation(app);
             }
         }
-        (KeyCode::Char('r'), _) => {
-            app.request_resume();
-        }
         (KeyCode::Char('l'), _) => {
             app.request_reload_conversation();
         }
@@ -274,8 +260,11 @@ fn handle_viewing_key(app: &mut AppState, key: KeyEvent) -> Result<()> {
                 app.page_up();
             }
         }
-        (KeyCode::Tab, _) | (KeyCode::Enter, _) => {
+        (KeyCode::Tab, _) => {
             app.toggle_panel();
+        }
+        (KeyCode::Enter, _) => {
+            app.request_resume();
         }
         (KeyCode::Char('n'), _) => {
             if app.active_panel == Panel::ConversationView {
@@ -884,13 +873,28 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_toggles_panel_in_normal_mode_conversation_panel() {
+    fn test_enter_resumes_session_in_normal_mode_session_panel() {
+        let mut app = AppState::new(make_sessions(3));
+        app.active_panel = Panel::SessionList;
+        app.selected_index = 1;
+        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-1"));
+        // Should NOT enter Viewing mode — Enter is now resume
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_enter_resumes_session_in_normal_mode_conversation_panel() {
         let mut app = AppState::new(make_sessions(3));
         app.active_panel = Panel::ConversationView;
+        app.selected_index = 0;
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        assert_eq!(app.active_panel, Panel::SessionList);
-        // Should NOT enter viewing mode — just toggle panel
-        assert_eq!(app.mode, AppMode::Normal);
+        // Even when focused on conversation panel, Enter resumes the selected session.
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-0"));
+        // Active panel stays where it was; Tab is the panel toggle now.
+        assert_eq!(app.active_panel, Panel::ConversationView);
     }
 
     #[test]
@@ -914,14 +918,13 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_toggles_panel_in_viewing_mode() {
+    fn test_enter_resumes_session_in_viewing_mode() {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
-        assert_eq!(app.active_panel, crate::app::Panel::SessionList);
+        app.selected_index = 2;
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        assert_eq!(app.active_panel, crate::app::Panel::ConversationView);
-        handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        assert_eq!(app.active_panel, crate::app::Panel::SessionList);
+        assert!(app.should_quit);
+        assert_eq!(app.resume_session_id.as_deref(), Some("sess-2"));
     }
 
     #[test]
@@ -1154,13 +1157,15 @@ mod tests {
     }
 
     #[test]
-    fn test_viewing_r_requests_resume() {
+    fn test_viewing_r_does_nothing() {
         let mut app = AppState::new(make_sessions(3));
         app.mode = AppMode::Viewing;
         app.selected_index = 1;
         handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
-        assert!(app.should_quit);
-        assert_eq!(app.resume_session_id.as_deref(), Some("sess-1"));
+        // `r` is no longer bound; Enter is the resume key.
+        assert!(!app.should_quit);
+        assert!(app.resume_session_id.is_none());
+        assert_eq!(app.mode, AppMode::Viewing);
     }
 
     #[test]
@@ -1228,17 +1233,10 @@ mod tests {
     }
 
     #[test]
-    fn test_r_requests_resume() {
+    fn test_r_does_nothing_in_normal() {
         let mut app = AppState::new(make_sessions(3));
         handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
-        assert!(app.should_quit);
-        assert_eq!(app.resume_session_id.as_deref(), Some("sess-0"));
-    }
-
-    #[test]
-    fn test_r_resume_empty_sessions() {
-        let mut app = AppState::new(vec![]);
-        handle_key(&mut app, make_key(KeyCode::Char('r'))).unwrap();
+        // `r` is no longer bound; Enter is the resume key.
         assert!(!app.should_quit);
         assert!(app.resume_session_id.is_none());
     }
@@ -1452,8 +1450,10 @@ mod tests {
     fn test_normal_enter_with_zero_sessions() {
         let mut app = AppState::new(vec![]);
         handle_key(&mut app, make_key(KeyCode::Enter)).unwrap();
-        // Should stay in Normal mode since no session to enter
+        // No session to resume — should not quit or set resume target.
         assert_eq!(app.mode, AppMode::Normal);
+        assert!(!app.should_quit);
+        assert!(app.resume_session_id.is_none());
     }
 
     #[test]

@@ -74,11 +74,11 @@ cchb
 | `g` / `G` | Jump to top / bottom |
 | `Right` / `Left` | Next / previous page |
 | `Ctrl+d` / `Ctrl+u` | Half-page down / up |
-| `Enter` / `l` | Open session |
+| `Enter` | Resume selected session in Claude Code |
+| `l` | Reload conversation |
 | `f` | Fuzzy search |
 | `d` | Date range filter |
 | `c` | Clear all filters |
-| `r` | Resume session in Claude Code |
 | `R` | Reload session list |
 | `Tab` | Switch panel focus |
 | `h` / `?` | Help |
@@ -96,7 +96,7 @@ cchb
 | `c` | Clear all filters |
 | `f` | Search |
 | `d` | Date range filter |
-| `r` | Resume session |
+| `Enter` | Resume selected session |
 | `Tab` | Switch panel focus |
 | `h` / `?` | Help |
 | `Esc` / `q` | Back to list |

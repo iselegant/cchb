@@ -560,16 +560,16 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &mut AppState, theme: &
 
     let hints = match (app.mode == AppMode::Viewing, has_filters) {
         (true, true) => {
-            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
+            " Enter:resume  Tab:panel  l:reload  f|/:search  d:date  c:clear  n/N:match  h:help  Esc/q:back "
         }
         (true, false) => {
-            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  h:help  Esc/q:back "
+            " Enter:resume  Tab:panel  l:reload  f|/:search  d:date  h:help  Esc/q:back "
         }
         (false, true) => {
-            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  c:clear  h:help  Esc/q:quit "
+            " Enter:resume  Tab:panel  l:reload  f|/:search  d:date  c:clear  h:help  Esc/q:quit "
         }
         (false, false) => {
-            " Tab/Enter:panel  l:reload  r:resume  f|/:search  d:date  h:help  Esc/q:quit "
+            " Enter:resume  Tab:panel  l:reload  f|/:search  d:date  h:help  Esc/q:quit "
         }
     };
 
@@ -698,14 +698,14 @@ fn render_help_overlay(frame: &mut Frame, theme: &Theme) {
         help_line("g / G", "Jump to top / bottom", theme),
         help_line("Right / Left", "Next / Previous page", theme),
         help_line("Ctrl+d / Ctrl+u", "Half page down / up", theme),
-        help_line("Enter", "Open session / Switch panel focus", theme),
+        help_line("Enter", "Resume selected session", theme),
         help_line("Esc / q", "Back / Quit", theme),
         help_line("Tab", "Switch panel focus", theme),
-        help_line("l", "Reload conversation (viewing)", theme),
+        help_line("l", "Reload conversation", theme),
         help_line("f / /", "Fuzzy search sessions", theme),
         help_line("d", "Filter by date range", theme),
         help_line("c", "Clear all filters", theme),
-        help_line("r", "Reload sessions", theme),
+        help_line("R", "Reload session list", theme),
         help_line("[ / ]", "Prev / Next session (viewing)", theme),
         help_line(
             "n / N",
