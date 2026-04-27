@@ -33,11 +33,9 @@ fn scrollbar_geometry(
     let max_scroll = total_content - viewport;
     let thumb_size = (viewport * track_length / total_content).max(1);
     let max_thumb_start = track_length - thumb_size;
-    let thumb_start = if max_scroll == 0 {
-        0
-    } else {
-        (position * max_thumb_start + max_scroll / 2) / max_scroll
-    };
+    let thumb_start = (position * max_thumb_start + max_scroll / 2)
+        .checked_div(max_scroll)
+        .unwrap_or(0);
     (thumb_start.min(max_thumb_start), thumb_size)
 }
 
