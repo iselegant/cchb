@@ -38,7 +38,7 @@ It is a single static binary, opens instantly, and stays out of your way.
 - **Mouse text selection** with auto-copy to clipboard on release; `y` works too.
 
 ### Resume
-- `Enter` exits the TUI and `exec`s `claude --resume <id>` — the session reopens in the same terminal as if you had typed it.
+- `Enter` exits the TUI and runs `claude --resume <session-id>` via `exec` — the session reopens in the same terminal as if you had typed it.
 
 ### Performance
 - Reads `sessions-index.json` (Claude Code's own metadata index) when available, falls back to a parallel JSONL scan, and lazy-loads conversations behind an LRU cache. See [ADR-0002](docs/adr/0002-merge-index-and-jsonl-scan-for-session-discovery.md).
