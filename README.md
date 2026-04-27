@@ -40,6 +40,14 @@ brew tap iselegant/tap
 brew install cchb
 ```
 
+### mise
+
+```sh
+mise use -g github:iselegant/cchb
+```
+
+This uses [mise](https://mise.jdx.dev/)'s `github` backend to install the latest release binary.
+
 ### Cargo — coming soon
 
 ```sh
