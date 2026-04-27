@@ -27,10 +27,17 @@ curl -fsSL https://raw.githubusercontent.com/iselegant/cchb/main/install.sh | sh
 
 This auto-detects your OS and architecture, downloads the latest binary, and places it in `~/.local/bin/`.
 
-### Homebrew (macOS) — coming soon
+### Homebrew (macOS)
 
 ```sh
 brew install iselegant/tap/cchb
+```
+
+Or tap once and reuse the short name:
+
+```sh
+brew tap iselegant/tap
+brew install cchb
 ```
 
 ### Cargo — coming soon
