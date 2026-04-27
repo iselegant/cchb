@@ -2,20 +2,46 @@
 
 A fast TUI tool for browsing and resuming past [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions.
 
-Inspired by [ccresume](https://github.com/sasazame/ccresume).
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/iselegant/cchb)](https://github.com/iselegant/cchb/releases)
+[![CI](https://github.com/iselegant/cchb/actions/workflows/ci.yml/badge.svg)](https://github.com/iselegant/cchb/actions/workflows/ci.yml)
 
 > [!NOTE]
 > This is **not** an official Anthropic product. It is a community-built tool that reads Claude Code's local session data.
 > Claude Code updates may change the internal data format or file layout, which could affect this tool's behavior. If you encounter issues after a Claude Code update, please check for a new release or open an issue.
 
-## Features
+## Why cchb?
 
-- **Session list** — Browse all Claude Code sessions across projects, sorted by last modified date
-- **Conversation viewer** — Preview conversations with Markdown rendering (headings, code blocks, tables, lists, links)
-- **Fuzzy search** — Search through conversation content with real-time filtering and in-conversation match highlighting
-- **Date range filter** — Filter sessions by date with arrow-key date stepping
-- **Session resume** — Resume any session directly with `claude --resume`
-- **Vim keybindings** — Navigate with `j`/`k`, `g`/`G`, `Ctrl+d`/`Ctrl+u`, and more
+Claude Code keeps every session as a JSONL file under `~/.claude/projects/`. They pile up fast — across branches, across repos — and the only built-in way to revisit one is to remember the right `claude --resume <id>`.
+
+cchb gives those sessions a home:
+
+- **Find** the session you want by content, project, branch, or date.
+- **Read** it inline with proper Markdown rendering — no `cat`-ing JSONL.
+- **Resume** it in one keystroke, straight back into Claude Code.
+
+It is a single static binary, opens instantly, and stays out of your way.
+
+## Highlights
+
+### Browse
+- **Cross-project session list** — every session under `~/.claude/projects/`, sorted by last modified.
+- **Live preview** — moving the cursor loads the conversation in the right panel; no extra keystroke.
+- **Project / branch / first-prompt** at a glance in the list.
+
+### Search & filter
+- **Fuzzy search** over conversation content with in-view match highlighting and `n` / `N` to jump between hits — across sessions, not just within one.
+- **Date range filter** with arrow-key date stepping (no manual typing required).
+
+### Read
+- **Markdown rendering** for headings, code blocks, tables, lists, links, and inline emphasis.
+- **Mouse text selection** with auto-copy to clipboard on release; `y` works too.
+
+### Resume
+- `Enter` exits the TUI and `exec`s `claude --resume <id>` — the session reopens in the same terminal as if you had typed it.
+
+### Performance
+- Reads `sessions-index.json` (Claude Code's own metadata index) when available, falls back to a parallel JSONL scan, and lazy-loads conversations behind an LRU cache. See [ADR-0002](docs/adr/0002-merge-index-and-jsonl-scan-for-session-discovery.md).
 
 ## Installation
 
@@ -78,6 +104,14 @@ Requires Rust 2024 edition (1.85+).
 ```sh
 cchb
 ```
+
+### Quick tour
+
+1. `cchb` — TUI opens with the most recent session selected and previewed.
+2. `f` — fuzzy search across all sessions; type, then `Enter` to keep the filter.
+3. `n` / `N` — jump to the next / previous match, crossing session boundaries.
+4. `Enter` — resume the highlighted session in Claude Code.
+5. `?` — full keybinding reference.
 
 ### CLI Flags
 
@@ -143,6 +177,29 @@ cchb
 └──────────────────────────────────────────────────┘
 ```
 
+## Architecture
+
+cchb is built on [ratatui](https://ratatui.rs/) + [crossterm](https://github.com/crossterm-rs/crossterm), with [nucleo](https://github.com/helix-editor/nucleo) for fuzzy matching and [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) for Markdown rendering.
+
+For the data format, module layout, and design rationale see:
+
+- [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) — full functional and non-functional spec.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
+
+## Acknowledgments
+
+cchb stands on the shoulders of [**ccresume**](https://github.com/sasazame/ccresume) by [@sasazame](https://github.com/sasazame).
+
+ccresume was the first tool I am aware of to recognize that Claude Code's local session files deserved a real browser, and it shaped how I think this category of tool should feel — fast, keyboard-first, and respectful of the terminal. cchb is a Rust-based reimagining in the same spirit, with a few additional features (Markdown rendering, cross-session search navigation, mouse selection, etc.). If you are on the Node.js side of the fence, **please go check out ccresume** — it is excellent, and a lot of cchb's UX exists because ccresume showed the way.
+
+## Contributing
+
+Bug reports and PRs are welcome. Before opening a PR, please:
+
+- Read [`CLAUDE.md`](CLAUDE.md) — this project follows TDD strictly.
+- Run `cargo test`, `cargo clippy`, and `cargo fmt --check`.
+- For non-trivial changes, add or update an [ADR](docs/adr/).
+
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE) © iselegant

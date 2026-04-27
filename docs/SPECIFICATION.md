@@ -3,7 +3,7 @@
 ## Overview
 
 A Rust-based TUI CLI tool for browsing and restoring past Claude Code session information.
-Inspired by [ccresume](https://github.com/sasazame/ccresume), it provides session listing, conversation preview, fuzzy search, and date range filtering capabilities.
+cchb is a Rust-based reimagining of [ccresume](https://github.com/sasazame/ccresume) by [@sasazame](https://github.com/sasazame), which pioneered the idea of an interactive browser for Claude Code session files. It provides session listing, conversation preview, fuzzy search, and date range filtering capabilities, distributed as a single static binary.
 
 ## Data Source
 
