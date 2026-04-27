@@ -93,6 +93,10 @@ jobs:
           set -eu
           VERSION="${REF_NAME#v}"
           cd artifacts
+          # The release job's checksums file is not uploaded as an artifact,
+          # so recompute from the tarball artifacts (same binaries → same SHAs).
+          sha256sum cchb-*.tar.gz > checksums-sha256.txt
+          cat checksums-sha256.txt
           ARM=$(awk \
             '/cchb-aarch64-apple-darwin\.tar\.gz/{print $1}' \
             checksums-sha256.txt)
