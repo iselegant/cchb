@@ -19,7 +19,7 @@ Inspired by [ccresume](https://github.com/sasazame/ccresume).
 
 ## Installation
 
-### Quick install (recommended)
+### Quick install
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/iselegant/cchb/main/install.sh | sh
