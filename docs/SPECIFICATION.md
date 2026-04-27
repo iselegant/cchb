@@ -423,3 +423,4 @@ The tool is distributed as a pre-built binary, not via `cargo install` from sour
 
 - GitHub Actions workflow builds release binaries for all supported platforms on tag push
 - Binaries are automatically attached to GitHub Releases
+- Before any build runs, a `verify-version` job asserts that the pushed tag (`vX.Y.Z`) matches `Cargo.toml`'s `version` field; mismatches fail the release. See ADR-0004.
