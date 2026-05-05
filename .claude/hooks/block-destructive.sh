@@ -6,16 +6,16 @@ set -euo pipefail
 input="$(cat)"
 cmd="$(jq -r '.tool_input.command // empty' <<< "$input")"
 
-BLOCKED_PATTERNS=(
-  # Rust - publishing (irreversible)
-  "cargo publish"
-)
-
-for pattern in "${BLOCKED_PATTERNS[@]}"; do
-  case "$cmd" in
-    *"$pattern"*)
-      echo "BLOCKED: '$pattern' is prohibited in agent sessions. Publish via CI/CD pipeline." >&2
-      exit 2
-      ;;
-  esac
-done
+# Rust - publishing (irreversible). `--dry-run` is read-only and is allowed
+# so the agent can validate packaging locally before a human runs the real publish.
+case "$cmd" in
+  *"cargo publish"*)
+    case "$cmd" in
+      *"--dry-run"*) ;;
+      *)
+        echo "BLOCKED: 'cargo publish' is prohibited in agent sessions. Use 'cargo publish --dry-run' for local validation, or publish via CI/CD pipeline." >&2
+        exit 2
+        ;;
+    esac
+    ;;
+esac
