@@ -8,6 +8,15 @@ repository = "https://github.com/iselegant/cchb"
 homepage = "https://github.com/iselegant/cchb"
 keywords = ["claude", "tui", "history", "session", "cli"]
 categories = ["command-line-utilities"]
+exclude = [
+    ".claude/",
+    ".github/",
+    "CLAUDE.md",
+    "Makefile",
+    "install.sh",
+    "scripts/",
+    "docs/",
+]
 
 [dependencies]
 ratatui = "0.30"
