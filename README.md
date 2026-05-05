@@ -74,11 +74,13 @@ mise use -g github:iselegant/cchb
 
 This uses [mise](https://mise.jdx.dev/)'s `github` backend to install the latest release binary.
 
-### Cargo — coming soon
+### Cargo (crates.io)
 
 ```sh
 cargo install cchb
 ```
+
+This builds cchb from source with your local Rust toolchain and installs the binary to `~/.cargo/bin/`. Requires Rust 2024 edition (1.85+).
 
 ### Manual download
 

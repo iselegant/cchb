@@ -402,16 +402,23 @@ Verification after each phase:
 
 ## Distribution
 
-### Binary Release
+### Distribution Channels
 
-The tool is distributed as a pre-built binary, not via `cargo install` from source.
+cchb is distributed through multiple channels so users can pick the one that fits their toolchain. All channels resolve to the same version derived from `Cargo.toml` (see ADR-0004).
 
-- Build optimized release binary with `cargo build --release`
-- Binary is output to `target/release/cchb`
-- Users install by placing the binary in their `$PATH` (e.g., `/usr/local/bin/`)
-- GitHub Releases are used for distribution with pre-built binaries for each platform
+| Channel | Command | Source |
+|---------|---------|--------|
+| crates.io | `cargo install cchb` | Source (built locally with the user's Rust toolchain) |
+| Homebrew tap (`iselegant/tap`) | `brew install iselegant/tap/cchb` | Pre-built binary tarball |
+| mise | `mise use -g github:iselegant/cchb` | Pre-built binary tarball |
+| `install.sh` | `curl -fsSL .../install.sh \| sh` | Pre-built binary tarball |
+| GitHub Releases | Manual download | Pre-built binary tarball |
 
-### Supported Platforms
+Note: `cargo install cchb` builds from source on the user's machine and installs to `~/.cargo/bin/`; it is not a pre-built binary. The other channels distribute the pre-built binaries described below.
+
+### Pre-Built Binary Targets
+
+Pre-built binaries are produced for the following targets and attached to each GitHub Release:
 
 | Platform | Target |
 |----------|--------|
@@ -419,8 +426,15 @@ The tool is distributed as a pre-built binary, not via `cargo install` from sour
 | macOS (Intel) | `x86_64-apple-darwin` |
 | Linux (x86_64) | `x86_64-unknown-linux-gnu` |
 
+### Published Crate Contents
+
+The crate uploaded to crates.io is intentionally limited to build- and license-relevant files (`Cargo.toml`, `Cargo.lock`, `LICENSE`, `README.md`, `src/`, `tests/`). Development-only assets (`.claude/`, `.github/`, `CLAUDE.md`, `Makefile`, `install.sh`, `scripts/`, `docs/`) are excluded via `[package].exclude`. See ADR-0005.
+
 ### CI/CD
 
-- GitHub Actions workflow builds release binaries for all supported platforms on tag push
-- Binaries are automatically attached to GitHub Releases
-- Before any build runs, a `verify-version` job asserts that the pushed tag (`vX.Y.Z`) matches `Cargo.toml`'s `version` field; mismatches fail the release. See ADR-0004.
+- A `verify-version` job runs first on every tag push and asserts that the pushed tag (`vX.Y.Z`) matches `Cargo.toml`'s `version` field; mismatches fail the workflow. See ADR-0004.
+- After `verify-version` passes, the workflow runs in parallel:
+  - `build` produces pre-built binaries for all supported targets and attaches them (with checksums) to the GitHub Release.
+  - `publish-crates` runs `cargo publish --locked` against crates.io using the `CARGO_REGISTRY_TOKEN` secret.
+- After `build` completes, `update-tap` bumps the Homebrew formula in `iselegant/homebrew-tap` so brew users get the new version automatically.
+- A failure in any of `verify-version`, `publish-crates`, `build`, or `update-tap` halts the release; no channel ships partial state.
